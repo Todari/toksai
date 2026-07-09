@@ -1,0 +1,18 @@
+{
+  "name": "@toksai/shared",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "echo skip"
+  },
+  "devDependencies": {
+    "@toksai/tsconfig": "workspace:*",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
