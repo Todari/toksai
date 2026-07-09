@@ -1,0 +1,1 @@
+{ "extends": "@toksai/tsconfig/nestjs.json", "include": ["src"] }

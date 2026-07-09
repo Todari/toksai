@@ -1,0 +1,20 @@
+{
+  "name": "@toksai/api",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo skip"
+  },
+  "dependencies": {
+    "@trpc/server": "^11.0.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@toksai/tsconfig": "workspace:*",
+    "typescript": "^5.7.0"
+  }
+}
