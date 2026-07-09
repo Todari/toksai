@@ -1,0 +1,22 @@
+{
+  "name": "@toksai/db",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "push": "dotenv -e ../../.env -- prisma db push",
+    "build": "prisma generate && tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo skip"
+  },
+  "dependencies": { "@prisma/client": "^6.4.0" },
+  "devDependencies": {
+    "@toksai/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
+    "dotenv-cli": "^8.0.0",
+    "prisma": "^6.4.0",
+    "typescript": "^5.7.0"
+  }
+}

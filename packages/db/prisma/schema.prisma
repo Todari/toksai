@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AnalysisStatus {
+  PENDING
+  PARSING
+  IDENTIFYING
+  ANALYZING
+  DONE
+  FAILED
+}
+
+model Analysis {
+  id         String         @id @default(cuid())
+  viewToken  String         @unique
+  adminToken String         @unique
+  status     AnalysisStatus @default(PENDING)
+  sourceType String         @default("upload")
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  participants Participant[]
+  rawChat      RawChat?
+  result       AnalysisResult?
+}
+
+model Participant {
+  id         String   @id @default(cuid())
+  analysisId String
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  rawName    String
+  nickname   String?
+  isOwner    Boolean  @default(false)
+}
+
+model RawChat {
+  id            String   @id @default(cuid())
+  analysisId    String   @unique
+  analysis      Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  encryptedText String
+  messageCount  Int
+  startedAt     DateTime
+  endedAt       DateTime
+}
+
+model AnalysisResult {
+  id             String   @id @default(cuid())
+  analysisId     String   @unique
+  analysis       Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  stats          Json
+  timeline       Json
+  affinitySeries Json
+  keywords       Json
+  personas       Json
+  badges         Json
+  chemiScore     Int
+  relationType   Json
+  highlights     Json
+  createdAt      DateTime @default(now())
+}
