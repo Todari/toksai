@@ -1,10 +1,11 @@
 import { Injectable } from "@nestjs/common";
 import type { PrismaClient } from "@toksai/db";
-import type { AnalysisContract, AnalysisView } from "@toksai/api";
+import type { AnalysisContract, AnalysisResultView, AnalysisView } from "@toksai/api";
 import { parseKakao } from "@toksai/shared";
 import { FileExtractService } from "../upload/file-extract.service";
 import { CryptoService } from "../common/crypto/crypto.service";
 import { generateToken } from "../common/token.util";
+import { AnalysisRunnerService } from "../analysis-pipeline/analysis-runner.service";
 
 @Injectable()
 export class AnalysisService implements AnalysisContract {
@@ -12,6 +13,7 @@ export class AnalysisService implements AnalysisContract {
     private readonly prisma: PrismaClient,
     private readonly extractor: FileExtractService,
     private readonly crypto: CryptoService,
+    private readonly runner: AnalysisRunnerService,
   ) {}
 
   async createFromUpload(buffer: Buffer, filename: string) {
@@ -79,5 +81,29 @@ export class AnalysisService implements AnalysisContract {
         },
       });
     }
+  }
+
+  async start(adminToken: string): Promise<{ ok: true }> {
+    const a = await this.prisma.analysis.findUnique({ where: { adminToken } });
+    if (!a) throw new Error("NOT_FOUND");
+    // fire-and-forget; 상태는 러너가 ANALYZING/DONE/FAILED로 관리
+    void this.runner.run(a.id).catch(() => {});
+    return { ok: true };
+  }
+
+  async getResult(viewToken: string): Promise<AnalysisResultView | null> {
+    const a = await this.prisma.analysis.findUnique({
+      where: { viewToken },
+      include: { result: true },
+    });
+    if (!a?.result) return null;
+    const r = a.result;
+    return {
+      stats: r.stats as never, timeline: r.timeline as never,
+      affinitySeries: r.affinitySeries as never, keywords: r.keywords as never,
+      personas: r.personas as never, badges: r.badges as never,
+      chemiScore: r.chemiScore, relationType: r.relationType as never,
+      highlights: r.highlights as never,
+    };
   }
 }

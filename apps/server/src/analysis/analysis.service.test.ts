@@ -23,7 +23,8 @@ describe("AnalysisService.createFromUpload", () => {
   it("파싱 성공 시 토큰과 함께 생성하고 원본을 암호문으로 저장한다", async () => {
     const prisma = makePrismaMock();
     const crypto = new CryptoService(randomBytes(32).toString("base64"));
-    const svc = new AnalysisService(prisma, new FileExtractService(), crypto);
+    const runner = { run: async () => {} } as any;
+    const svc = new AnalysisService(prisma, new FileExtractService(), crypto, runner);
 
     const r = await svc.createFromUpload(Buffer.from(SAMPLE, "utf8"), "chat.txt");
 
@@ -37,7 +38,8 @@ describe("AnalysisService.createFromUpload", () => {
   it("1:1이 아니면 에러를 전파한다", async () => {
     const prisma = makePrismaMock();
     const crypto = new CryptoService(randomBytes(32).toString("base64"));
-    const svc = new AnalysisService(prisma, new FileExtractService(), crypto);
+    const runner = { run: async () => {} } as any;
+    const svc = new AnalysisService(prisma, new FileExtractService(), crypto, runner);
     await expect(
       svc.createFromUpload(Buffer.from(`2025. 1. 1. 오후 1:00, A : 혼잣말`), "c.txt"),
     ).rejects.toThrow();

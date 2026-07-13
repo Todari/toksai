@@ -1,3 +1,6 @@
+import type { AnalysisResultView } from "@toksai/shared";
+export type { AnalysisResultView } from "@toksai/shared";
+
 export interface ParticipantView {
   id: string;
   rawName: string;
@@ -19,6 +22,8 @@ export interface AnalysisContract {
     ownerRawName: string,
     nicknames: Record<string, string>,
   ): Promise<void>;
+  start(adminToken: string): Promise<{ ok: true }>;
+  getResult(viewToken: string): Promise<AnalysisResultView | null>;
 }
 
 export interface TrpcContext {

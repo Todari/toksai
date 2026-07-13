@@ -90,6 +90,9 @@ importers:
       '@toksai/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@toksai/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@trpc/client':
         specifier: ^11.0.0
         version: 11.18.0(@trpc/server@11.18.0(typescript@5.9.3))(typescript@5.9.3)
@@ -127,6 +130,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@toksai/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@trpc/server':
         specifier: ^11.0.0
         version: 11.18.0(typescript@5.9.3)
