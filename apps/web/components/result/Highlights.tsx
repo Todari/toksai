@@ -45,6 +45,7 @@ export function Highlights({ highlights }: HighlightsProps) {
       <div className="mt-4 space-y-3">
         {highlights.map((highlight, i) => {
           const meta = KIND_META[highlight.kind];
+          if (!meta) return null;
           const date = formatHighlightDate(highlight.at);
           return (
             <div key={`${highlight.kind}-${i}`} className={`rounded-2xl p-4 ${meta.card}`}>

@@ -55,6 +55,11 @@ export default function ResultPage({ params }: { params: Promise<{ viewToken: st
         } else if (a.status === "DONE") {
           const r = await getResult(viewToken);
           if (cancelled) return;
+          if (!r) {
+            // DONE인데 결과가 없으면(예: 삭제된 경우) 무한 대기 대신 실패로 처리
+            setStatus("failed");
+            return;
+          }
           setResult(r);
           setStatus("done");
         } else if (a.status === "FAILED") {
