@@ -5,12 +5,15 @@ import type { AnalysisResultView } from "@toksai/api";
 import { getAnalysis, getResult, loadAdminToken, startAnalysis } from "../../../lib/api";
 import { AffinityChart } from "../../../components/result/AffinityChart";
 import { AnalyzingState } from "../../../components/result/AnalyzingState";
+import { DeleteButton } from "../../../components/result/DeleteButton";
 import { FailedState } from "../../../components/result/FailedState";
 import { Habits } from "../../../components/result/Habits";
 import { Headline } from "../../../components/result/Headline";
 import { Highlights } from "../../../components/result/Highlights";
 import { Keywords } from "../../../components/result/Keywords";
 import { PersonaCards } from "../../../components/result/PersonaCards";
+import { PrivacyNote } from "../../../components/result/PrivacyNote";
+import { ShareBar } from "../../../components/result/ShareBar";
 import { Timeline } from "../../../components/result/Timeline";
 
 const POLL_INTERVAL_MS = 2500;
@@ -111,13 +114,21 @@ export default function ResultPage({ params }: { params: Promise<{ viewToken: st
   }
 
   if (status === "done" && view && result) {
-    return <ResultView view={view} result={result} />;
+    return <ResultView view={view} result={result} viewToken={viewToken} />;
   }
 
   return <AnalyzingState />;
 }
 
-function ResultView({ view, result }: { view: ViewData; result: AnalysisResultView }) {
+function ResultView({
+  view,
+  result,
+  viewToken,
+}: {
+  view: ViewData;
+  result: AnalysisResultView;
+  viewToken: string;
+}) {
   return (
     <main className="min-h-screen bg-[#FFFBF3] pb-12 dark:bg-[#171310]">
       <div className="mx-auto max-w-[480px] space-y-6 px-4 py-8">
@@ -128,7 +139,9 @@ function ResultView({ view, result }: { view: ViewData; result: AnalysisResultVi
         <Keywords keywords={result.keywords} />
         <PersonaCards view={view} result={result} />
         <Highlights highlights={result.highlights} />
-        {/* 공유바/프라이버시 고지/삭제 버튼은 Task 9에서 조립된다. */}
+        <ShareBar viewToken={viewToken} />
+        <PrivacyNote />
+        <DeleteButton viewToken={viewToken} />
       </div>
     </main>
   );

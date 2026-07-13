@@ -26,6 +26,9 @@ export function saveAdminToken(viewToken: string, adminToken: string) {
 export function loadAdminToken(viewToken: string): string {
   return localStorage.getItem(`toksai:admin:${viewToken}`) ?? "";
 }
+export function clearAdminToken(viewToken: string) {
+  localStorage.removeItem(`toksai:admin:${viewToken}`);
+}
 
 export const startAnalysis = (adminToken: string) => trpc.analysis.start.mutate({ adminToken });
 export const getAnalysis = (viewToken: string) => trpc.analysis.get.query({ viewToken });
