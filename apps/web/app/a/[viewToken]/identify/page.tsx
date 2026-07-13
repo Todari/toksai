@@ -1,7 +1,7 @@
 "use client";
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { trpc, loadAdminToken } from "../../../../lib/api";
+import { trpc, loadAdminToken, startAnalysis } from "../../../../lib/api";
 
 type P = { id: string; rawName: string; nickname: string | null; isOwner: boolean };
 
@@ -12,6 +12,7 @@ export default function Identify({ params }: { params: Promise<{ viewToken: stri
   const [parts, setParts] = useState<P[]>([]);
   const [owner, setOwner] = useState("");
   const [nick, setNick] = useState<Record<string, string>>({});
+  const [error, setError] = useState("");
 
   useEffect(() => {
     setAdminToken(loadAdminToken(viewToken));
@@ -23,8 +24,14 @@ export default function Identify({ params }: { params: Promise<{ viewToken: stri
   }, [viewToken]);
 
   async function submit() {
-    await trpc.analysis.identify.mutate({ adminToken, ownerRawName: owner, nicknames: nick });
-    router.push(`/a/${viewToken}`); // 결과 페이지(Plan 3)
+    setError("");
+    try {
+      await trpc.analysis.identify.mutate({ adminToken, ownerRawName: owner, nicknames: nick });
+      await startAnalysis(adminToken); // 분석 시작(fire-and-forget 서버측)
+      router.push(`/a/${viewToken}`);
+    } catch {
+      setError("분석 시작에 실패했어요. 잠시 후 다시 시도해주세요.");
+    }
   }
 
   return (
@@ -41,6 +48,7 @@ export default function Identify({ params }: { params: Promise<{ viewToken: stri
           </div>
         ))}
       </div>
+      {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
       <button disabled={!owner || !adminToken} onClick={submit}
         className="mt-6 w-full rounded-lg bg-black py-2 text-white disabled:opacity-40">
         분석 시작
