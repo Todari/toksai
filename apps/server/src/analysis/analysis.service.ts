@@ -106,4 +106,11 @@ export class AnalysisService implements AnalysisContract {
       highlights: r.highlights as never,
     };
   }
+
+  async deleteByAdminToken(adminToken: string): Promise<{ ok: true }> {
+    const a = await this.prisma.analysis.findUnique({ where: { adminToken } });
+    if (!a) throw new Error("NOT_FOUND");
+    await this.prisma.analysis.delete({ where: { id: a.id } });
+    return { ok: true };
+  }
 }

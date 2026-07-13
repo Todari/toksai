@@ -23,4 +23,7 @@ export const analysisRouter = router({
   result: publicProcedure
     .input(z.object({ viewToken: z.string() }))
     .query(({ input, ctx }) => ctx.analysis.getResult(input.viewToken)),
+  delete: publicProcedure
+    .input(z.object({ adminToken: z.string() }))
+    .mutation(({ input, ctx }) => ctx.analysis.deleteByAdminToken(input.adminToken)),
 });

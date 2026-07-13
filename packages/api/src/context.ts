@@ -24,6 +24,7 @@ export interface AnalysisContract {
   ): Promise<void>;
   start(adminToken: string): Promise<{ ok: true }>;
   getResult(viewToken: string): Promise<AnalysisResultView | null>;
+  deleteByAdminToken(adminToken: string): Promise<{ ok: true }>;
 }
 
 export interface TrpcContext {
