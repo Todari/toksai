@@ -1131,7 +1131,12 @@ export class AnalysisRunnerService {
       });
       await this.prisma.analysis.update({ where: { id: analysisId }, data: { status: "DONE" } });
     } catch (e) {
-      await this.prisma.analysis.update({ where: { id: analysisId }, data: { status: "FAILED" } });
+      // FAILED 전이가 다시 실패해도 원본 에러를 가리지 않는다.
+      try {
+        await this.prisma.analysis.update({ where: { id: analysisId }, data: { status: "FAILED" } });
+      } catch (e2) {
+        this.logger.error(`failed to mark ${analysisId} FAILED: ${String(e2)}`);
+      }
       this.logger.error(`analysis ${analysisId} failed: ${String(e)}`);
       throw e;
     }
