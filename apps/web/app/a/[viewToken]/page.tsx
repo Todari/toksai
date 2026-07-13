@@ -6,6 +6,7 @@ import { getAnalysis, getResult, loadAdminToken, startAnalysis } from "../../../
 import { AffinityChart } from "../../../components/result/AffinityChart";
 import { AnalyzingState } from "../../../components/result/AnalyzingState";
 import { FailedState } from "../../../components/result/FailedState";
+import { Habits } from "../../../components/result/Habits";
 import { Headline } from "../../../components/result/Headline";
 import { Timeline } from "../../../components/result/Timeline";
 
@@ -120,6 +121,7 @@ function ResultView({ view, result }: { view: ViewData; result: AnalysisResultVi
         <Headline view={view} result={result} />
         <AffinityChart view={view} result={result} />
         <Timeline events={result.timeline} />
+        <Habits result={result} view={view} />
         {/* 나머지 섹션(뱃지/키워드/하이라이트 등)은 이후 태스크에서 조립된다. */}
       </div>
     </main>
