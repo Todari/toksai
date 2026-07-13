@@ -1116,9 +1116,18 @@ export class AnalysisRunnerService {
         synthesisZod as never,
       );
 
+      // LLM이 from을 닉네임/흔들린 표기로 줘도 rawName으로 정규화(무결성 방어)
+      const canon = (name: string): string | null => {
+        if (name === people.rawA || name === people.nickA) return people.rawA;
+        if (name === people.rawB || name === people.nickB) return people.rawB;
+        return null;
+      };
       const affinitySeries: AffinityPoint[] = bucketResults.map((b) => {
         const scores: Record<string, number> = {};
-        for (const a of b.affinity) scores[a.from] = a.score;
+        for (const a of b.affinity) {
+          const key = canon(a.from);
+          if (key) scores[key] = a.score;
+        }
         return { month: b.month, scores };
       });
 

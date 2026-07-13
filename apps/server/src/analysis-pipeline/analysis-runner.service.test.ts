@@ -71,6 +71,25 @@ describe("AnalysisRunnerService.run", () => {
     expect(prisma._store.analysis.status).toBe("DONE");
   });
 
+  it("affinity from이 닉네임으로 와도 rawName으로 정규화한다", async () => {
+    const crypto = new CryptoService(randomBytes(32).toString("base64"));
+    const prisma = makePrisma(crypto.encrypt(RAW));
+    const nickBucket = (month: string) => () => ({
+      month, events: [], keywords: [], highlights: [],
+      affinity: [
+        { from: "승현", to: "민성", score: 55, reason: "r" }, // 닉네임으로 응답
+        { from: "민성", to: "승현", score: 44, reason: "r" },
+      ],
+    });
+    const fake = new FakeLlmClient([nickBucket("2025-01"), nickBucket("2025-02"), synthesisReturn]);
+    const runner = new AnalysisRunnerService(prisma, crypto, fake);
+    await runner.run("a1");
+    const saved = prisma.analysisResult.upsert.mock.calls[0][0].create;
+    expect(saved.affinitySeries[0].scores["김승현"]).toBe(55); // "승현" → rawName
+    expect(saved.affinitySeries[0].scores["곽민성"]).toBe(44);
+    expect(saved.affinitySeries[0].scores["승현"]).toBeUndefined();
+  });
+
   it("LLM이 던지면 status FAILED 후 rethrow", async () => {
     const crypto = new CryptoService(randomBytes(32).toString("base64"));
     const prisma = makePrisma(crypto.encrypt(RAW));
