@@ -3,9 +3,9 @@ import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AnalysisResultView } from "@toksai/api";
 import { getAnalysis, getResult, loadAdminToken, startAnalysis } from "../../../lib/api";
-import { nicknameOf, pickOwnerOther } from "../../../components/result/format";
 import { AnalyzingState } from "../../../components/result/AnalyzingState";
 import { FailedState } from "../../../components/result/FailedState";
+import { Headline } from "../../../components/result/Headline";
 
 const POLL_INTERVAL_MS = 2500;
 const MAX_POLLS = 40;
@@ -112,18 +112,12 @@ export default function ResultPage({ params }: { params: Promise<{ viewToken: st
 }
 
 function ResultView({ view, result }: { view: ViewData; result: AnalysisResultView }) {
-  const { owner, other } = pickOwnerOther(view);
   return (
-    <main className="mx-auto max-w-md p-8">
-      <h1 className="text-xl font-bold">
-        {nicknameOf(view, owner.rawName)} & {nicknameOf(view, other.rawName)}
-      </h1>
-      <p className="mt-6 text-5xl font-extrabold">
-        {result.chemiScore}
-        <span className="ml-1 text-lg font-normal text-gray-400">점</span>
-      </p>
-      <p className="mt-2 text-lg text-gray-700">{result.relationType.label}</p>
-      {/* 상세 섹션(히트맵/타임라인/뱃지 등)은 이후 태스크에서 조립된다. */}
+    <main className="min-h-screen bg-[#FFFBF3] pb-12 dark:bg-[#171310]">
+      <div className="mx-auto max-w-[480px] space-y-6 px-4 py-8">
+        <Headline view={view} result={result} />
+        {/* 나머지 섹션(호감 신호 곡선/타임라인/뱃지 등)은 이후 태스크에서 조립된다. */}
+      </div>
     </main>
   );
 }

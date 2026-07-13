@@ -42,3 +42,11 @@ export function pickOwnerOther(view: AnalysisView): {
   const other = view.participants.find((p) => p !== owner) ?? view.participants[1];
   return { owner, other };
 }
+
+/**
+ * 두 참여자의 고정 색상 매핑. 케미 게이지 그라데이션과 같은 팔레트를 쓰며,
+ * isOwner 여부와 무관하게 오너=amber(카톡 옐로 계열)/상대=rose(코랄 계열)로
+ * 헤드라인·차트·타임라인 등 페이지 전역에서 동일하게 유지한다.
+ */
+export const OWNER_COLOR = "#F5B301";
+export const OTHER_COLOR = "#FB7185";
