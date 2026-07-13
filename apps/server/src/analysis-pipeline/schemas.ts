@@ -42,7 +42,7 @@ export const bucketResponseSchema = {
       date: { type: "string" }, title: { type: "string" }, summary: { type: "string" }, quote: { type: "string" },
     }, required: ["date", "title", "summary"] } },
     affinity: { type: "array", items: { type: "object", properties: {
-      from: { type: "string" }, to: { type: "string" }, score: { type: "number" }, reason: { type: "string" },
+      from: { type: "string" }, to: { type: "string" }, score: { type: "number", minimum: 0, maximum: 100 }, reason: { type: "string" },
     }, required: ["from", "to", "score", "reason"] } },
     keywords: { type: "array", items: { type: "string" } },
     highlights: { type: "array", items: { type: "object", properties: {
@@ -67,7 +67,7 @@ export const synthesisResponseSchema = {
       rawName: { type: "string" }, badgeId: { type: "string", enum: BADGE_IDS },
       reason: { type: "string" },
     }, required: ["rawName", "badgeId", "reason"] } },
-    chemiScore: { type: "number" },
+    chemiScore: { type: "number", minimum: 0, maximum: 100 },
     relationType: { type: "object", properties: {
       code: { type: "string" }, label: { type: "string" }, description: { type: "string" },
     }, required: ["code", "label", "description"] },
