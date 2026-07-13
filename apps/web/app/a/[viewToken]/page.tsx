@@ -8,6 +8,9 @@ import { AnalyzingState } from "../../../components/result/AnalyzingState";
 import { FailedState } from "../../../components/result/FailedState";
 import { Habits } from "../../../components/result/Habits";
 import { Headline } from "../../../components/result/Headline";
+import { Highlights } from "../../../components/result/Highlights";
+import { Keywords } from "../../../components/result/Keywords";
+import { PersonaCards } from "../../../components/result/PersonaCards";
 import { Timeline } from "../../../components/result/Timeline";
 
 const POLL_INTERVAL_MS = 2500;
@@ -122,7 +125,10 @@ function ResultView({ view, result }: { view: ViewData; result: AnalysisResultVi
         <AffinityChart view={view} result={result} />
         <Timeline events={result.timeline} />
         <Habits result={result} view={view} />
-        {/* 나머지 섹션(뱃지/키워드/하이라이트 등)은 이후 태스크에서 조립된다. */}
+        <Keywords keywords={result.keywords} />
+        <PersonaCards view={view} result={result} />
+        <Highlights highlights={result.highlights} />
+        {/* 공유바/프라이버시 고지/삭제 버튼은 Task 9에서 조립된다. */}
       </div>
     </main>
   );
