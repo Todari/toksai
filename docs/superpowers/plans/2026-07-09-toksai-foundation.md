@@ -115,7 +115,7 @@ dist
 
 `.env.example`:
 ```
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/toksai
+DATABASE_URL=postgresql://postgres:postgres@localhost:5435/toksai
 GEMINI_API_KEY=
 ENCRYPTION_KEY=
 PORT=4100
@@ -165,7 +165,7 @@ TZ=Asia/Seoul
     "moduleResolution": "node",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
-    "outDir": "dist"
+    "outDir": "${configDir}/dist"
   }
 }
 ```
@@ -222,7 +222,7 @@ services:
       POSTGRES_DB: toksai
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    ports: ["127.0.0.1:5432:5432"]
+    ports: ["127.0.0.1:5435:5432"]   # 로컬 5432/5433/5434는 타 프로젝트가 점유 → 톡사이는 5435
     volumes: ["pgdata:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -451,7 +451,8 @@ describe("parseKakao (iOS)", () => {
   });
 
   it("내용에 콜론이 있어도 첫 ' : '만 구분자로 쓴다", () => {
-    const raw = `2025. 1. 1. 오후 1:00, 김승현 : 시간은 3 : 30이야`;
+    const raw = `2025. 1. 1. 오후 1:00, 김승현 : 시간은 3 : 30이야
+2025. 1. 1. 오후 1:01, 곽민성 : ㅇㅋ`;
     const r = parseKakao(raw);
     expect(r.messages[0].author).toBe("김승현");
     expect(r.messages[0].text).toBe("시간은 3 : 30이야");
@@ -606,6 +607,7 @@ git commit -m "feat(shared): iOS KakaoTalk parser with TDD"
   "dependencies": { "@prisma/client": "^6.4.0" },
   "devDependencies": {
     "@toksai/tsconfig": "workspace:*",
+    "@types/node": "^22.0.0",
     "dotenv-cli": "^8.0.0",
     "prisma": "^6.4.0",
     "typescript": "^5.7.0"
