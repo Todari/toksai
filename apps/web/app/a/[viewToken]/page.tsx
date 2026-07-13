@@ -3,9 +3,11 @@ import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AnalysisResultView } from "@toksai/api";
 import { getAnalysis, getResult, loadAdminToken, startAnalysis } from "../../../lib/api";
+import { AffinityChart } from "../../../components/result/AffinityChart";
 import { AnalyzingState } from "../../../components/result/AnalyzingState";
 import { FailedState } from "../../../components/result/FailedState";
 import { Headline } from "../../../components/result/Headline";
+import { Timeline } from "../../../components/result/Timeline";
 
 const POLL_INTERVAL_MS = 2500;
 const MAX_POLLS = 40;
@@ -116,7 +118,9 @@ function ResultView({ view, result }: { view: ViewData; result: AnalysisResultVi
     <main className="min-h-screen bg-[#FFFBF3] pb-12 dark:bg-[#171310]">
       <div className="mx-auto max-w-[480px] space-y-6 px-4 py-8">
         <Headline view={view} result={result} />
-        {/* 나머지 섹션(호감 신호 곡선/타임라인/뱃지 등)은 이후 태스크에서 조립된다. */}
+        <AffinityChart view={view} result={result} />
+        <Timeline events={result.timeline} />
+        {/* 나머지 섹션(뱃지/키워드/하이라이트 등)은 이후 태스크에서 조립된다. */}
       </div>
     </main>
   );
