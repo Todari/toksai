@@ -49,6 +49,13 @@ const synthesisReturn = () => ({
   chemiScore: 82,
   relationType: { code: "WARM", label: "티키타카", description: "d" },
   highlights: [{ quote: "q", caption: "c", kind: "flutter" }],
+  extras: {
+    movie: { title: "너의 이름은", reason: "r" },
+    aiComment: "좋아요",
+    insideJokes: ["ㄹㅇ"],
+    moodSeries: [{ month: "2025-01", mood: "설렘", note: "n" }],
+    topicSuggestion: "여행",
+  },
 });
 
 describe("AnalysisRunnerService.run", () => {
@@ -88,6 +95,33 @@ describe("AnalysisRunnerService.run", () => {
     expect(saved.affinitySeries[0].scores["김승현"]).toBe(55); // "승현" → rawName
     expect(saved.affinitySeries[0].scores["곽민성"]).toBe(44);
     expect(saved.affinitySeries[0].scores["승현"]).toBeUndefined();
+  });
+
+  it("솔직 하이라이트 종류(banter/awkward/clash)도 스키마를 통과해 저장된다", async () => {
+    const crypto = new CryptoService(randomBytes(32).toString("base64"));
+    const prisma = makePrisma(crypto.encrypt(RAW));
+    const honestBucket = (month: string) => () => ({
+      ...bucketReturn(month)(),
+      highlights: [{ quote: "q", caption: "c", kind: "banter" }],
+    });
+    const honestSynthesis = () => ({
+      ...synthesisReturn(),
+      chemiScore: 34,
+      relationType: { code: "COLD", label: "서먹한 사이", description: "d" },
+      highlights: [
+        { quote: "q1", caption: "c1", kind: "awkward" },
+        { quote: "q2", caption: "c2", kind: "clash" },
+      ],
+    });
+    const fake = new FakeLlmClient([honestBucket("2025-01"), honestBucket("2025-02"), honestSynthesis]);
+    const runner = new AnalysisRunnerService(prisma, crypto, fake);
+
+    await runner.run("a1");
+
+    const saved = prisma.analysisResult.upsert.mock.calls[0][0].create;
+    expect(saved.highlights.map((h: { kind: string }) => h.kind)).toEqual(["awkward", "clash"]);
+    expect(saved.chemiScore).toBe(34);
+    expect(prisma._store.analysis.status).toBe("DONE");
   });
 
   it("LLM이 던지면 status FAILED 후 rethrow", async () => {

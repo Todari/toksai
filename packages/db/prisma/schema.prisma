@@ -62,5 +62,6 @@ model AnalysisResult {
   chemiScore     Int
   relationType   Json
   highlights     Json
+  extras         Json
   createdAt      DateTime @default(now())
 }

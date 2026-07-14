@@ -79,6 +79,14 @@ export interface RelationType {
   description: string;
 }
 
+export interface AnalysisExtras {
+  movie: { title: string; reason: string };
+  aiComment: string;
+  insideJokes: string[];
+  moodSeries: { month: string; mood: string; note: string }[];
+  topicSuggestion: string;
+}
+
 export interface AnalysisResultView {
   stats: ChatStats;
   timeline: TimelineEvent[];
@@ -89,6 +97,7 @@ export interface AnalysisResultView {
   chemiScore: number; // 0..100
   relationType: RelationType;
   highlights: Highlight[];
+  extras: AnalysisExtras;
 }
 
 // Gemini 중간 산출물 (버킷별)

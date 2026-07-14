@@ -103,7 +103,7 @@ export class AnalysisService implements AnalysisContract {
       affinitySeries: r.affinitySeries as never, keywords: r.keywords as never,
       personas: r.personas as never, badges: r.badges as never,
       chemiScore: r.chemiScore, relationType: r.relationType as never,
-      highlights: r.highlights as never,
+      highlights: r.highlights as never, extras: r.extras as never,
     };
   }
 

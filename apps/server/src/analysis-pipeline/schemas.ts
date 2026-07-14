@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { BADGE_IDS } from "@toksai/shared";
+import { BADGE_IDS, HIGHLIGHT_KINDS } from "@toksai/shared";
 
-const kindEnum = z.enum(["flutter", "funny", "touching"]);
+const kindEnum = z.enum(HIGHLIGHT_KINDS);
 
 export const bucketZod = z.object({
   month: z.string(),
@@ -31,6 +31,13 @@ export const synthesisZod = z.object({
   highlights: z.array(z.object({
     quote: z.string(), caption: z.string(), kind: kindEnum, at: z.string().optional(),
   })),
+  extras: z.object({
+    movie: z.object({ title: z.string(), reason: z.string() }),
+    aiComment: z.string(),
+    insideJokes: z.array(z.string()),
+    moodSeries: z.array(z.object({ month: z.string(), mood: z.string(), note: z.string() })),
+    topicSuggestion: z.string(),
+  }),
 });
 
 // Gemini responseSchema (JSON Schema subset). 필드는 Zod와 일치.
@@ -47,7 +54,7 @@ export const bucketResponseSchema = {
     keywords: { type: "array", items: { type: "string" } },
     highlights: { type: "array", items: { type: "object", properties: {
       quote: { type: "string" }, caption: { type: "string" },
-      kind: { type: "string", enum: ["flutter", "funny", "touching"] },
+      kind: { type: "string", enum: HIGHLIGHT_KINDS },
     }, required: ["quote", "caption", "kind"] } },
   },
   required: ["month", "events", "affinity", "keywords", "highlights"],
@@ -73,8 +80,17 @@ export const synthesisResponseSchema = {
     }, required: ["code", "label", "description"] },
     highlights: { type: "array", items: { type: "object", properties: {
       quote: { type: "string" }, caption: { type: "string" },
-      kind: { type: "string", enum: ["flutter", "funny", "touching"] }, at: { type: "string" },
+      kind: { type: "string", enum: HIGHLIGHT_KINDS }, at: { type: "string" },
     }, required: ["quote", "caption", "kind"] } },
+    extras: { type: "object", properties: {
+      movie: { type: "object", properties: { title: { type: "string" }, reason: { type: "string" } }, required: ["title", "reason"] },
+      aiComment: { type: "string" },
+      insideJokes: { type: "array", items: { type: "string" } },
+      moodSeries: { type: "array", items: { type: "object", properties: {
+        month: { type: "string" }, mood: { type: "string" }, note: { type: "string" },
+      }, required: ["month", "mood", "note"] } },
+      topicSuggestion: { type: "string" },
+    }, required: ["movie", "aiComment", "insideJokes", "moodSeries", "topicSuggestion"] },
   },
-  required: ["timeline", "keywords", "personas", "badges", "chemiScore", "relationType", "highlights"],
+  required: ["timeline", "keywords", "personas", "badges", "chemiScore", "relationType", "highlights", "extras"],
 } as const;

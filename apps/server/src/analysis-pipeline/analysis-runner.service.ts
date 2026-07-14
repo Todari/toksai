@@ -112,7 +112,7 @@ export class AnalysisRunnerService {
       affinitySeries: r.affinitySeries as object, keywords: r.keywords as object,
       personas: r.personas as object, badges: r.badges as object,
       chemiScore: Math.round(r.chemiScore), relationType: r.relationType as object,
-      highlights: r.highlights as object,
+      highlights: r.highlights as object, extras: r.extras as object,
     };
   }
 
