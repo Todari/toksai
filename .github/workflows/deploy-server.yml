@@ -1,0 +1,52 @@
+name: Deploy Server (EC2)
+
+# toksai 서버를 todari-consolidate 공유 EC2의 격리된 ~/toksai 스택으로 배포한다.
+# 공유 ~/.env / ~/docker-compose.yml (trade-tower 등)은 절대 건드리지 않는다.
+# 시크릿(.env.production)은 러너북대로 EC2에 최초 1회 수동 생성 — 이 워크플로는 pull + up만.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/server/**"
+      - "packages/**"
+      - "docker-compose.prod.yml"
+      - "apps/server/Dockerfile"
+      - ".github/workflows/deploy-server.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 15m
+          script: |
+            set -e
+            # github.com 호스트키 보장 (비대화형 셸 SSH 협상 실패 방지)
+            ssh-keyscan -t rsa,ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null || true
+            sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
+
+            # 격리된 toksai 스택 (~/toksai) 에서만 동작
+            cd ~/toksai
+            TARGET_ORIGIN="git@github.com:Todari/toksai.git"
+            CURRENT_ORIGIN=$(git remote get-url origin)
+            if [ "$CURRENT_ORIGIN" != "$TARGET_ORIGIN" ]; then
+              git remote set-url origin "$TARGET_ORIGIN"
+              echo "origin normalized: $CURRENT_ORIGIN -> $TARGET_ORIGIN"
+            fi
+            git pull origin main
+
+            # .env.production 은 최초 1회 수동 부트스트랩됨(러너북). 워크플로는 절대 시크릿을 쓰지 않는다.
+            if [ ! -f .env.production ]; then
+              echo "ERROR: ~/toksai/.env.production 이 없습니다. deploy/README.md 부트스트랩을 먼저 수행하세요."
+              exit 1
+            fi
+
+            docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+            docker image prune -f
+            docker compose -f docker-compose.prod.yml --env-file .env.production ps

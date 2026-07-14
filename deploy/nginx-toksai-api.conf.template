@@ -1,0 +1,28 @@
+# toksai API nginx vhost 템플릿 (todari-consolidate EC2)
+# 사용:  <DOMAIN>을 실제 도메인으로 치환 →
+#   sudo cp 이 파일 /etc/nginx/sites-available/toksai-api.conf
+#   sudo ln -s /etc/nginx/sites-available/toksai-api.conf /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#   sudo certbot --nginx -d api.<DOMAIN>      # 443 + 자동 갱신 (80은 certbot이 리다이렉트 추가)
+#
+# toksai server 컨테이너는 docker-compose.prod.yml에서 127.0.0.1:4100 로 노출됨.
+# (4100이 EC2에서 이미 쓰이면 compose ports와 아래 proxy_pass를 함께 바꿀 것)
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name api.<DOMAIN>;
+
+    # 업로드 20MB 허용(파서 입력) + 여유
+    client_max_body_size 25M;
+
+    location / {
+        proxy_pass http://127.0.0.1:4100;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 120s;   # Gemini 분석 대기 여유
+    }
+}
