@@ -61,6 +61,12 @@ function PersonStatBlock({ person, stat }: { person: PersonRef; stat: PersonStat
           color={person.color}
         />
         <StatTile
+          icon="👋"
+          label="선톡"
+          value={`${stat.initiationCount.toLocaleString("ko-KR")}회`}
+          color={person.color}
+        />
+        <StatTile
           icon="✏️"
           label="평균 길이"
           value={`${Math.round(stat.avgMessageLength)}자`}
@@ -95,22 +101,26 @@ function PersonStatBlock({ person, stat }: { person: PersonRef; stat: PersonStat
   );
 }
 
-/** 선톡(대화 시작) 밸런스 바 + 1인당 KPI 통계 타일. 색은 AffinityChart와 동일한 owner/other 팔레트. */
+/**
+ * 텍스트 양(메시지 수) 밸런스 바 + 1인당 KPI 통계 타일. 누가 더 많이 말했는지가
+ * 헤드라인이고, 선톡 횟수는 PersonStatBlock의 보조 타일로 내려갔다.
+ * 색은 AffinityChart와 동일한 owner/other 팔레트.
+ */
 export function InitiationBalance({ stats, owner, other }: InitiationBalanceProps) {
   const ownerStat = stats.perPerson[owner.rawName];
   const otherStat = stats.perPerson[other.rawName];
   if (!ownerStat || !otherStat) return null;
 
-  const ownerInit = ownerStat.initiationCount;
-  const otherInit = otherStat.initiationCount;
-  const totalInit = ownerInit + otherInit;
-  const ownerPct = totalInit > 0 ? Math.round((ownerInit / totalInit) * 100) : 50;
+  const ownerMsgs = ownerStat.messageCount;
+  const otherMsgs = otherStat.messageCount;
+  const totalMsgs = ownerMsgs + otherMsgs;
+  const ownerPct = totalMsgs > 0 ? Math.round((ownerMsgs / totalMsgs) * 100) : 50;
   const otherPct = 100 - ownerPct;
 
   return (
     <div>
       <h3 className="text-sm font-bold text-neutral-800 dark:text-neutral-100">
-        누가 더 먼저 말을 걸었을까?
+        누가 더 많이 말했을까?
       </h3>
 
       <div className="mt-3 flex items-center justify-between text-xs font-semibold">
@@ -122,19 +132,19 @@ export function InitiationBalance({ stats, owner, other }: InitiationBalanceProp
         </span>
       </div>
 
-      {totalInit > 0 ? (
+      {totalMsgs > 0 ? (
         <div
           className="mt-1.5 flex h-3 w-full gap-[2px]"
           role="img"
-          aria-label={`${owner.name} 선톡 ${ownerPct}퍼센트, ${other.name} 선톡 ${otherPct}퍼센트`}
+          aria-label={`${owner.name} 메시지량 ${ownerPct}퍼센트, ${other.name} 메시지량 ${otherPct}퍼센트`}
         >
           <div
-            title={`${owner.name} · ${ownerInit.toLocaleString("ko-KR")}회 (${ownerPct}%)`}
+            title={`${owner.name} · ${ownerMsgs.toLocaleString("ko-KR")}개 (${ownerPct}%)`}
             className="h-full rounded-full"
             style={{ width: `${ownerPct}%`, backgroundColor: owner.color }}
           />
           <div
-            title={`${other.name} · ${otherInit.toLocaleString("ko-KR")}회 (${otherPct}%)`}
+            title={`${other.name} · ${otherMsgs.toLocaleString("ko-KR")}개 (${otherPct}%)`}
             className="h-full rounded-full"
             style={{ width: `${otherPct}%`, backgroundColor: other.color }}
           />
@@ -143,12 +153,29 @@ export function InitiationBalance({ stats, owner, other }: InitiationBalanceProp
         <div className="mt-1.5 h-3 w-full rounded-full bg-neutral-100 dark:bg-white/10" />
       )}
 
+      <div className="mt-3 grid grid-cols-2 gap-2.5">
+        <div>
+          <p className="text-lg font-extrabold" style={{ color: owner.color }}>
+            {ownerMsgs.toLocaleString("ko-KR")}<span className="text-xs font-bold">개</span>
+          </p>
+          <p className="text-[11px] text-neutral-400 dark:text-neutral-500">
+            {ownerStat.charCount.toLocaleString("ko-KR")}자
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-lg font-extrabold" style={{ color: other.color }}>
+            {otherMsgs.toLocaleString("ko-KR")}<span className="text-xs font-bold">개</span>
+          </p>
+          <p className="text-[11px] text-neutral-400 dark:text-neutral-500">
+            {otherStat.charCount.toLocaleString("ko-KR")}자
+          </p>
+        </div>
+      </div>
+
       <p className="mt-1.5 text-[11px] text-neutral-400 dark:text-neutral-500">
-        {totalInit > 0
-          ? `총 ${totalInit.toLocaleString("ko-KR")}번의 대화 시작 중 ${owner.name}가 ${ownerInit.toLocaleString(
-              "ko-KR",
-            )}번, ${other.name}가 ${otherInit.toLocaleString("ko-KR")}번 먼저 말을 걸었어요.`
-          : "대화 시작 데이터가 충분하지 않아요."}
+        {totalMsgs > 0
+          ? `총 ${totalMsgs.toLocaleString("ko-KR")}개의 메시지 중 ${owner.name}가 ${ownerPct}%, ${other.name}가 ${otherPct}%를 보냈어요.`
+          : "메시지 데이터가 충분하지 않아요."}
       </p>
 
       <div className="mt-5 grid grid-cols-1 gap-4">
