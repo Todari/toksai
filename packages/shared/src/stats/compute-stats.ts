@@ -1,6 +1,7 @@
 import type { Message } from "../types";
 import type { ChatStats, PersonStat, MonthlyVolume } from "../analysis-types";
 import { GAP_HOURS } from "../constants";
+import { computeFunFacts } from "./fun-facts";
 
 const GAP_MS = GAP_HOURS * 3600 * 1000;
 const EMOJI_RE = /\p{Extended_Pictographic}/gu;
@@ -84,5 +85,6 @@ export function computeStats(messages: Message[]): ChatStats {
     perPerson,
     heatmap,
     monthly: [...monthlyMap.values()],
+    funFacts: computeFunFacts(messages),
   };
 }

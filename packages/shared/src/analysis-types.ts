@@ -17,6 +17,16 @@ export interface MonthlyVolume {
   perPerson: Record<string, number>;
 }
 
+export interface FunFacts {
+  goldenHour: { weekday: number; hour: number; count: number }; // heatmap argmax (weekday 0=Sun)
+  busiestDay: { date: string; count: number };                  // "YYYY-MM-DD" with most messages
+  longestSilence: { gapHours: number; brokenBy: string; brokenAt: string; message: string } | null;
+  lateNightCount: number;                                        // messages with hour in [0,5)
+  firstMessage: { at: string; author: string; text: string };
+  topEmoji: Record<string, string | null>;                      // rawName -> most frequent emoji (or null)
+  conversationEnder: Record<string, number>;                    // rawName -> count of session-ending messages
+}
+
 export interface ChatStats {
   totalMessages: number;
   startedAt: string; // ISO
@@ -25,6 +35,7 @@ export interface ChatStats {
   perPerson: Record<string, PersonStat>;
   heatmap: number[][]; // [weekday 0-6 (0=Sun)][hour 0-23]
   monthly: MonthlyVolume[];
+  funFacts: FunFacts;
 }
 
 export interface TimelineEvent {
@@ -50,10 +61,15 @@ export interface AwardedBadge {
   reason: string;
 }
 
+// 하이라이트 분류. 긍정(설렘/웃김/감동)만이 아니라 중립·부정(티키타카/어색/투닥)도
+// 포함해, 실제 관계 온도를 미화 없이 담는다.
+export const HIGHLIGHT_KINDS = ["flutter", "funny", "touching", "banter", "awkward", "clash"] as const;
+export type HighlightKind = (typeof HIGHLIGHT_KINDS)[number];
+
 export interface Highlight {
   quote: string;
   caption: string;
-  kind: "flutter" | "funny" | "touching";
+  kind: HighlightKind;
   at?: string;
 }
 
@@ -81,5 +97,5 @@ export interface BucketAnalysis {
   events: { date: string; title: string; summary: string; quote?: string }[];
   affinity: { from: string; to: string; score: number; reason: string }[];
   keywords: string[];
-  highlights: { quote: string; caption: string; kind: "flutter" | "funny" | "touching" }[];
+  highlights: { quote: string; caption: string; kind: HighlightKind }[];
 }
