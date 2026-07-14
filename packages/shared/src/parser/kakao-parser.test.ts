@@ -97,3 +97,35 @@ describe("parseKakao (iOS)", () => {
     catch (e) { expect((e as ParseError).code).toBe("NO_MESSAGES"); }
   });
 });
+
+describe("parseKakao (iOS, 24시간제·분할 zip)", () => {
+  it("오전/오후 없는 24시간제 형식을 파싱한다", () => {
+    const raw = `2026. 2. 22. 12:19, 신우 : 조식
+2026. 2. 22. 23:45, 이마따전 🤯⚒️💙 : 야식
+2026. 2. 23. 0:05, 신우 : 자정 넘김`;
+    const r = parseKakao(raw);
+    expect(r.messages).toHaveLength(3);
+    expect(r.messages[0].at.getHours()).toBe(12);
+    expect(r.messages[1].at.getHours()).toBe(23);
+    expect(r.messages[2].at.getHours()).toBe(0);
+  });
+
+  it("BOM으로 시작하는 메시지 줄도 파싱한다", () => {
+    const raw = `﻿2026. 2. 22. 오후 12:19, 신우 : 안녕
+2026. 2. 22. 오후 12:20, 영희 : 하이`;
+    expect(parseKakao(raw).messages).toHaveLength(2);
+  });
+
+  it("분할 파일 경계의 헤더 줄(BOM+파일명, 저장한 날짜)이 직전 메시지에 붙지 않는다", () => {
+    const raw = `2026. 2. 22. 12:19, 신우 : 마지막 메시지
+﻿Talk_2026.7.14 10:21-2.txt
+저장한 날짜 : 2026. 7. 14. 10:41
+
+
+2026년 2월 22일 일요일
+2026. 2. 22. 12:30, 영희 : 다음 파일 첫 메시지`;
+    const r = parseKakao(raw);
+    expect(r.messages).toHaveLength(2);
+    expect(r.messages[0].text).toBe("마지막 메시지");
+  });
+});
