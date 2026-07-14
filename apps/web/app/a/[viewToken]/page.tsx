@@ -4,17 +4,23 @@ import { useRouter } from "next/navigation";
 import type { AnalysisResultView } from "@toksai/api";
 import { getAnalysis, getResult, loadAdminToken, startAnalysis } from "../../../lib/api";
 import { AffinityChart } from "../../../components/result/AffinityChart";
+import { AiComment } from "../../../components/result/AiComment";
 import { AnalyzingState } from "../../../components/result/AnalyzingState";
 import { DeleteButton } from "../../../components/result/DeleteButton";
 import { FailedState } from "../../../components/result/FailedState";
+import { FunFacts } from "../../../components/result/FunFacts";
 import { Habits } from "../../../components/result/Habits";
 import { Headline } from "../../../components/result/Headline";
 import { Highlights } from "../../../components/result/Highlights";
+import { InsideJokes } from "../../../components/result/InsideJokes";
 import { Keywords } from "../../../components/result/Keywords";
+import { MoodStrip } from "../../../components/result/MoodStrip";
+import { MovieCard } from "../../../components/result/MovieCard";
 import { PersonaCards } from "../../../components/result/PersonaCards";
 import { PrivacyNote } from "../../../components/result/PrivacyNote";
 import { ShareBar } from "../../../components/result/ShareBar";
 import { Timeline } from "../../../components/result/Timeline";
+import { TopicSuggestion } from "../../../components/result/TopicSuggestion";
 
 const POLL_INTERVAL_MS = 2500;
 const MAX_POLLS = 40;
@@ -138,12 +144,18 @@ function ResultView({
     <main className="min-h-screen bg-[#FFFBF3] pb-12 dark:bg-[#171310]">
       <div className="mx-auto max-w-[480px] space-y-6 px-4 py-8">
         <Headline view={view} result={result} />
+        <AiComment result={result} />
         <AffinityChart view={view} result={result} />
+        <MoodStrip result={result} />
         <Timeline events={result.timeline} />
         <Habits result={result} view={view} />
+        <FunFacts view={view} result={result} />
         <Keywords keywords={result.keywords} />
+        <InsideJokes result={result} />
+        <MovieCard result={result} />
         <PersonaCards view={view} result={result} />
         <Highlights highlights={result.highlights} />
+        <TopicSuggestion result={result} />
         <ShareBar viewToken={viewToken} />
         <PrivacyNote />
         <DeleteButton viewToken={viewToken} />
