@@ -16,6 +16,7 @@ import { InsideJokes } from "../../../components/result/InsideJokes";
 import { Keywords } from "../../../components/result/Keywords";
 import { MoodStrip } from "../../../components/result/MoodStrip";
 import { MovieCard } from "../../../components/result/MovieCard";
+import { NewAnalysisCta } from "../../../components/result/NewAnalysisCta";
 import { PersonaCards } from "../../../components/result/PersonaCards";
 import { PrivacyNote } from "../../../components/result/PrivacyNote";
 import { ShareBar } from "../../../components/result/ShareBar";
@@ -25,7 +26,7 @@ import { TopicSuggestion } from "../../../components/result/TopicSuggestion";
 const POLL_INTERVAL_MS = 2500;
 const MAX_POLLS = 40;
 
-type PageStatus = "loading" | "identifying" | "analyzing" | "done" | "failed";
+type PageStatus = "loading" | "identifying" | "analyzing" | "done" | "failed" | "timeout";
 // tRPC 응답 그대로의 타입(Date 필드는 문자열로 직렬화됨)을 사용한다.
 type ViewData = NonNullable<Awaited<ReturnType<typeof getAnalysis>>>;
 
@@ -77,7 +78,8 @@ export default function ResultPage({ params }: { params: Promise<{ viewToken: st
           if (polls < MAX_POLLS) {
             timer = setTimeout(tick, POLL_INTERVAL_MS);
           } else {
-            setStatus("failed");
+            // 서버는 계속 분석 중일 수 있으므로 실패가 아니라 "오래 걸림"으로 안내한다.
+            setStatus("timeout");
           }
         }
       } catch {
@@ -103,19 +105,56 @@ export default function ResultPage({ params }: { params: Promise<{ viewToken: st
     setAttempt((n) => n + 1);
   }
 
+  /** 타임아웃 시 분석을 다시 돌리지 않고 폴링만 이어서 재개한다. */
+  function handleResume() {
+    setStatus("loading");
+    setAttempt((n) => n + 1);
+  }
+
   if (status === "loading" || status === "analyzing") return <AnalyzingState />;
 
   if (status === "identifying") {
     return (
-      <main className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center gap-3 p-8 text-center">
-        <p className="text-lg font-semibold">아직 분석 전이에요</p>
-        <p className="text-sm text-gray-500">먼저 둘 중 누가 나인지 알려주세요.</p>
-        <button
-          onClick={() => router.push(`/a/${viewToken}/identify`)}
-          className="mt-2 rounded-lg bg-black px-6 py-2 text-white"
-        >
-          식별하러 가기
-        </button>
+      <main className="grid min-h-dvh place-items-center bg-[#FFFBF3] px-6 dark:bg-[#171310]">
+        <div className="w-full max-w-sm rounded-3xl bg-white p-8 text-center shadow-sm dark:bg-[#241d17]">
+          <span className="text-4xl" aria-hidden>
+            💬
+          </span>
+          <p className="mt-3 text-lg font-bold text-neutral-800 dark:text-neutral-100">아직 분석 전이에요</p>
+          <p className="mt-1.5 text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
+            두 사람을 뭐라고 부를지 정하면 바로 분석을 시작해요.
+          </p>
+          <button
+            onClick={() => router.push(`/a/${viewToken}/identify`)}
+            className="mt-5 w-full rounded-2xl bg-gradient-to-r from-[#F5B301] to-[#FB7185] py-3 text-base font-extrabold text-white shadow-md shadow-amber-300/30 transition active:scale-[0.99] dark:shadow-none"
+          >
+            닉네임 정하러 가기
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  if (status === "timeout") {
+    return (
+      <main className="grid min-h-dvh place-items-center bg-[#FFFBF3] px-6 dark:bg-[#171310]">
+        <div className="w-full max-w-sm rounded-3xl bg-white p-8 text-center shadow-sm dark:bg-[#241d17]">
+          <span className="text-4xl" aria-hidden>
+            ⏳
+          </span>
+          <p className="mt-3 text-lg font-bold text-neutral-800 dark:text-neutral-100">
+            생각보다 오래 걸리고 있어요
+          </p>
+          <p className="mt-1.5 text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
+            대화가 길면 분석에 시간이 더 걸릴 수 있어요. 조금 뒤에 이어서 확인해 보세요.
+          </p>
+          <button
+            onClick={handleResume}
+            className="mt-5 w-full rounded-2xl bg-gradient-to-r from-[#F5B301] to-[#FB7185] py-3 text-base font-extrabold text-white shadow-md shadow-amber-300/30 transition active:scale-[0.99] dark:shadow-none"
+          >
+            이어서 확인하기
+          </button>
+        </div>
       </main>
     );
   }
@@ -157,6 +196,7 @@ function ResultView({
         <Highlights highlights={result.highlights} />
         <TopicSuggestion result={result} />
         <ShareBar viewToken={viewToken} />
+        <NewAnalysisCta />
         <PrivacyNote />
         <DeleteButton viewToken={viewToken} />
       </div>

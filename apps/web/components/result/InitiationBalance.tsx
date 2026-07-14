@@ -12,10 +12,14 @@ interface InitiationBalanceProps {
   other: PersonRef;
 }
 
-/** 초 단위 답장텀 중앙값을 보기 좋은 한글 단위로("42초"/"3분"/"1.5시간"). null이면 "–". */
+/**
+ * 초 단위 답장텀 중앙값을 보기 좋은 한글 단위로. null이면 "–".
+ * 카톡 내보내기 타임스탬프는 '분' 단위(초 없음)라 같은 분 답장은 0초로 계산된다.
+ * 즉 1분 미만은 실제로 잴 수 없는 값이므로 "1분 이내"로 정직하게 표기한다.
+ */
 function formatReplyLatency(sec: number | null): string {
   if (sec === null) return "–";
-  if (sec < 60) return `${Math.round(sec)}초`;
+  if (sec < 60) return "1분 이내";
   const minutes = sec / 60;
   if (minutes < 60) return `${Math.round(minutes)}분`;
   const hours = minutes / 60;

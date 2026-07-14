@@ -26,6 +26,24 @@ const KIND_META: Record<
     chip: "bg-orange-50 text-orange-700 dark:bg-orange-400/10 dark:text-orange-300",
     card: "bg-orange-50/60 dark:bg-orange-400/5",
   },
+  banter: {
+    emoji: "🏓",
+    label: "티키타카",
+    chip: "bg-sky-50 text-sky-700 dark:bg-sky-400/10 dark:text-sky-300",
+    card: "bg-sky-50/60 dark:bg-sky-400/5",
+  },
+  awkward: {
+    emoji: "🧊",
+    label: "어색",
+    chip: "bg-slate-100 text-slate-600 dark:bg-slate-400/10 dark:text-slate-300",
+    card: "bg-slate-100/60 dark:bg-slate-400/5",
+  },
+  clash: {
+    emoji: "💢",
+    label: "투닥",
+    chip: "bg-red-50 text-red-600 dark:bg-red-400/10 dark:text-red-300",
+    card: "bg-red-50/60 dark:bg-red-400/5",
+  },
 };
 
 function formatHighlightDate(at?: string): string | null {
@@ -35,7 +53,7 @@ function formatHighlightDate(at?: string): string | null {
   return d ? `${y}.${m}.${d}` : `${y}.${m}`;
 }
 
-/** 설렘/웃김/감동 인용을 kind별 색·이모지 카드로 모아 보여준다. */
+/** 설렘/웃김/감동/티키타카/어색/투닥 인용을 kind별 색·이모지 카드로 모아 보여준다. */
 export function Highlights({ highlights }: HighlightsProps) {
   if (highlights.length === 0) return null;
 
