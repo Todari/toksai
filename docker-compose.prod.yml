@@ -25,6 +25,9 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:?GEMINI_API_KEY is required}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
       FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL is required}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
+      EMAIL_INBOUND_DOMAIN: ${EMAIL_INBOUND_DOMAIN:-talk.todari.dev}
       NODE_OPTIONS: --max-old-space-size=512
       PORT: "4100"
       NODE_ENV: production

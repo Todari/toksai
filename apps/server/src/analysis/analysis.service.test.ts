@@ -44,6 +44,17 @@ describe("AnalysisService.createFromUpload", () => {
       svc.createFromUpload(Buffer.from(`2025. 1. 1. 오후 1:00, A : 혼잣말`), "c.txt"),
     ).rejects.toThrow();
   });
+
+  it("메일 첨부는 sourceType을 email로 기록한다", async () => {
+    const prisma = makePrismaMock();
+    const crypto = new CryptoService(randomBytes(32).toString("base64"));
+    const runner = { run: async () => {} } as any;
+    const svc = new AnalysisService(prisma, new FileExtractService(), crypto, runner);
+
+    await svc.createFromFile(Buffer.from(SAMPLE, "utf8"), "chat.txt", "email");
+
+    expect(prisma.analysis.create.mock.calls[0][0].data.sourceType).toBe("email");
+  });
 });
 
 describe("AnalysisService.start", () => {

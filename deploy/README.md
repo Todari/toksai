@@ -41,6 +41,9 @@ DATABASE_URL=postgresql://postgres:<URL 인코딩한 비밀번호>@postgres:5432
 GEMINI_API_KEY=<Gemini API 키>
 ENCRYPTION_KEY=<base64 32바이트>
 FRONTEND_URL=https://toksai.todari.dev
+RESEND_API_KEY=<Resend API 키>
+RESEND_WEBHOOK_SECRET=<Resend email.received 웹훅 서명 키>
+EMAIL_INBOUND_DOMAIN=talk.todari.dev
 EOF
 
 chmod 600 ~/toksai/.env.production
@@ -57,6 +60,10 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 `ENCRYPTION_KEY`를 바꾸면 기존 암호화 원문을 복호화할 수 없으므로 백업하고 고정한다.
 EC2에서 저장소를 clone하거나 이미지를 빌드하지 않는다.
+
+Resend는 `talk.todari.dev` 서브도메인의 수신만 담당한다. 루트 `todari.dev`의 iCloud
+Mail MX 레코드는 유지한다. Resend 웹훅 URL은
+`https://api.toksai.todari.dev/webhooks/resend/inbound`, 이벤트는 `email.received`다.
 
 ## 4. API DNS와 nginx
 

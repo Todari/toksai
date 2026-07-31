@@ -33,8 +33,8 @@ export function Hero() {
         </p>
 
         <p className="mx-auto mt-3 max-w-[36ch] text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
-          카카오톡 대화 내보내기(zip/txt/csv)를 올리면 둘 사이를 분석해 드려요. 재미로 보는 관심
-          신호예요.
+          카카오톡 대화 내보내기 파일을 직접 올리거나 메일로 보내면 둘 사이를 분석해 드려요.
+          재미로 보는 관심 신호예요.
         </p>
 
         <UploadCta />

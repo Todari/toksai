@@ -3,6 +3,7 @@
 import type { AnalysisResultView } from "@toksai/api";
 import { AffinityChart } from "./AffinityChart";
 import { AiComment } from "./AiComment";
+import { DeleteButton } from "./DeleteButton";
 import { FunFacts } from "./FunFacts";
 import { Habits } from "./Habits";
 import { Headline } from "./Headline";
@@ -124,6 +125,7 @@ export function ResultView({
         <NewAnalysisCta isSample={isSample} />
         <QualityNote result={result} />
         <PrivacyNote />
+        {!isSample && viewToken ? <DeleteButton viewToken={viewToken} /> : null}
       </div>
     </main>
   );

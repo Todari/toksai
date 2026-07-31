@@ -22,6 +22,10 @@ export class AnalysisService implements AnalysisContract {
   ) {}
 
   async createFromUpload(buffer: Buffer, filename: string) {
+    return this.createFromFile(buffer, filename, "upload");
+  }
+
+  async createFromFile(buffer: Buffer, filename: string, sourceType: "upload" | "email") {
     const text = this.extractor.extractChatText(buffer, filename);
     const parsed = parseKakao(text); // 1:1 아니면 ParseError
     if (parsed.messages.length > MAX_CHAT_MESSAGES) {
@@ -48,7 +52,7 @@ export class AnalysisService implements AnalysisContract {
         viewToken,
         adminToken,
         status: "IDENTIFYING",
-        sourceType: "upload",
+        sourceType,
         participants: {
           create: parsed.participants.map((p) => ({ rawName: p.rawName })),
         },

@@ -7,7 +7,9 @@ import { AppModule } from "./app.module";
 import { AnalysisService } from "./analysis/analysis.service";
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
   app.enableCors({ origin: process.env.FRONTEND_URL ?? true, credentials: true });
 
   const analysisService = app.get(AnalysisService);

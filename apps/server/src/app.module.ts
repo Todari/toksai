@@ -10,13 +10,27 @@ import { GeminiService } from "./gemini/gemini.service";
 import { UploadController } from "./upload/upload.controller";
 import { HealthController } from "./health.controller";
 import { RateLimitService } from "./common/rate-limit.service";
+import {
+  EmailIntakeController,
+  ResendWebhookController,
+} from "./email-intake/email-intake.controller";
+import { EmailIntakeService } from "./email-intake/email-intake.service";
+import {
+  ResendInboundGateway,
+} from "./email-intake/resend-inbound.gateway";
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true, load: [configuration] })],
-  controllers: [UploadController, HealthController],
+  controllers: [
+    UploadController,
+    EmailIntakeController,
+    ResendWebhookController,
+    HealthController,
+  ],
   providers: [
     FileExtractService,
     RateLimitService,
+    ResendInboundGateway,
     { provide: CryptoService, useFactory: () => new CryptoService() },
     GeminiService,
     {
@@ -34,6 +48,15 @@ import { RateLimitService } from "./common/rate-limit.service";
         rateLimit: RateLimitService,
       ) => new AnalysisService(prisma, extractor, crypto, runner, rateLimit),
       inject: [FileExtractService, CryptoService, AnalysisRunnerService, RateLimitService],
+    },
+    {
+      provide: EmailIntakeService,
+      useFactory: (
+        analysis: AnalysisService,
+        rateLimit: RateLimitService,
+        gateway: ResendInboundGateway,
+      ) => new EmailIntakeService(prisma, analysis, rateLimit, gateway),
+      inject: [AnalysisService, RateLimitService, ResendInboundGateway],
     },
   ],
 })

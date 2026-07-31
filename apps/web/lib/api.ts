@@ -8,6 +8,16 @@ export const trpc = createTRPCClient<AppRouter>({
 });
 
 export interface UploadResult { id: string; viewToken: string; adminToken: string }
+export interface EmailIntake {
+  token: string;
+  address: string;
+  expiresAt: string;
+}
+export type EmailIntakeStatus =
+  | { status: "WAITING" | "PROCESSING"; expiresAt: string }
+  | { status: "READY"; expiresAt: string; viewToken: string; adminToken: string }
+  | { status: "FAILED"; expiresAt: string; errorCode: string }
+  | { status: "EXPIRED" | "NOT_FOUND" };
 
 export class UploadApiError extends Error {
   constructor(
@@ -32,6 +42,22 @@ export async function uploadFile(file: File): Promise<UploadResult> {
       res.status,
     );
   }
+  return res.json();
+}
+
+export async function createEmailIntake(): Promise<EmailIntake> {
+  const res = await fetch(`${API}/email-intakes`, { method: "POST" });
+  if (!res.ok) throw new Error(`EMAIL_INTAKE_CREATE_${res.status}`);
+  return res.json();
+}
+
+export async function getEmailIntake(token: string): Promise<EmailIntakeStatus> {
+  const res = await fetch(`${API}/email-intakes/status`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) throw new Error(`EMAIL_INTAKE_STATUS_${res.status}`);
   return res.json();
 }
 
