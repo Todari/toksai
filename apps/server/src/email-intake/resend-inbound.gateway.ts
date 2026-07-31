@@ -20,17 +20,16 @@ export interface InboundEmailGateway {
 
 @Injectable()
 export class ResendInboundGateway implements InboundEmailGateway {
-  private readonly resend = new Resend(process.env.RESEND_API_KEY);
+  private resendClient?: Resend;
 
   verify(payload: string, headers: WebhookHeaders): WebhookEventPayload {
     const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
     if (!webhookSecret) throw new Error("RESEND_WEBHOOK_NOT_CONFIGURED");
-    return this.resend.webhooks.verify({ payload, headers, webhookSecret });
+    return this.client().webhooks.verify({ payload, headers, webhookSecret });
   }
 
   async listAttachments(emailId: string): Promise<AttachmentData[]> {
-    if (!process.env.RESEND_API_KEY) throw new Error("RESEND_API_NOT_CONFIGURED");
-    const { data, error } = await this.resend.emails.receiving.attachments.list({ emailId });
+    const { data, error } = await this.client().emails.receiving.attachments.list({ emailId });
     if (error || !data) {
       throw new Error(`RESEND_ATTACHMENTS_FAILED:${error?.message ?? "unknown"}`);
     }
@@ -61,6 +60,13 @@ export class ResendInboundGateway implements InboundEmailGateway {
       chunks.push(Buffer.from(value));
     }
     return Buffer.concat(chunks, totalBytes);
+  }
+
+  private client(): Resend {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) throw new Error("RESEND_API_NOT_CONFIGURED");
+    this.resendClient ??= new Resend(apiKey);
+    return this.resendClient;
   }
 }
 
