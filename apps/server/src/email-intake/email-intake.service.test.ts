@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EmailIntakeService } from "./email-intake.service";
 import { RateLimitService } from "../common/rate-limit.service";
 
@@ -69,6 +69,30 @@ function makePrisma() {
 }
 
 describe("EmailIntakeService", () => {
+  beforeEach(() => {
+    vi.stubEnv("RESEND_API_KEY", "re_test");
+    vi.stubEnv("RESEND_WEBHOOK_SECRET", "whsec_test");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("Resend 연결 전에는 작동하지 않는 주소를 발급하지 않는다", async () => {
+    vi.stubEnv("RESEND_API_KEY", "");
+    const service = new EmailIntakeService(
+      makePrisma(),
+      {} as any,
+      new RateLimitService(),
+      {} as any,
+    );
+
+    await expect(service.create("client-1")).rejects.toMatchObject({
+      response: { code: "EMAIL_INTAKE_UNAVAILABLE" },
+      status: 503,
+    });
+  });
+
   it("분석마다 추측하기 어려운 전용 수신 주소를 발급한다", async () => {
     const prisma = makePrisma();
     const service = new EmailIntakeService(

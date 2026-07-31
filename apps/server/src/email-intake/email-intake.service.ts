@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import type { PrismaClient } from "@toksai/db";
 import { ParseError } from "@toksai/shared";
 import { randomBytes } from "node:crypto";
@@ -33,6 +38,12 @@ export class EmailIntakeService {
   ) {}
 
   async create(clientId: string) {
+    if (!process.env.RESEND_API_KEY || !process.env.RESEND_WEBHOOK_SECRET) {
+      throw new ServiceUnavailableException({
+        code: "EMAIL_INTAKE_UNAVAILABLE",
+        message: "메일 수신 기능을 준비하고 있어요. 잠시 후 다시 시도해 주세요.",
+      });
+    }
     this.rateLimit.assert("email-intake-create", clientId, 12, 60 * 60 * 1000);
     const token = randomBytes(16).toString("hex");
     const expiresAt = new Date(Date.now() + INTAKE_TTL_MS);
