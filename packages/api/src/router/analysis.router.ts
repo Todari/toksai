@@ -19,7 +19,7 @@ export const analysisRouter = router({
     }),
   start: publicProcedure
     .input(z.object({ adminToken: z.string() }))
-    .mutation(({ input, ctx }) => ctx.analysis.start(input.adminToken)),
+    .mutation(({ input, ctx }) => ctx.analysis.start(input.adminToken, ctx.clientIp)),
   result: publicProcedure
     .input(z.object({ viewToken: z.string() }))
     .query(({ input, ctx }) => ctx.analysis.getResult(input.viewToken)),

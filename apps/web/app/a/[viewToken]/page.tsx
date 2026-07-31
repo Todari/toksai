@@ -1,27 +1,12 @@
 "use client";
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AnalysisResultView } from "@toksai/api";
 import { getAnalysis, getResult, loadAdminToken, startAnalysis } from "../../../lib/api";
-import { AffinityChart } from "../../../components/result/AffinityChart";
-import { AiComment } from "../../../components/result/AiComment";
 import { AnalyzingState } from "../../../components/result/AnalyzingState";
-import { DeleteButton } from "../../../components/result/DeleteButton";
 import { FailedState } from "../../../components/result/FailedState";
-import { FunFacts } from "../../../components/result/FunFacts";
-import { Habits } from "../../../components/result/Habits";
-import { Headline } from "../../../components/result/Headline";
-import { Highlights } from "../../../components/result/Highlights";
-import { InsideJokes } from "../../../components/result/InsideJokes";
-import { Keywords } from "../../../components/result/Keywords";
-import { MoodStrip } from "../../../components/result/MoodStrip";
-import { MovieCard } from "../../../components/result/MovieCard";
-import { NewAnalysisCta } from "../../../components/result/NewAnalysisCta";
-import { PersonaCards } from "../../../components/result/PersonaCards";
-import { PrivacyNote } from "../../../components/result/PrivacyNote";
-import { ShareBar } from "../../../components/result/ShareBar";
-import { Timeline } from "../../../components/result/Timeline";
-import { TopicSuggestion } from "../../../components/result/TopicSuggestion";
+import { ResultView } from "../../../components/result/ResultView";
+import { trackEvent } from "../../../lib/analytics";
 
 const POLL_INTERVAL_MS = 2500;
 const MAX_POLLS = 40;
@@ -38,6 +23,13 @@ export default function ResultPage({ params }: { params: Promise<{ viewToken: st
   const [status, setStatus] = useState<PageStatus>("loading");
   const [attempt, setAttempt] = useState(0);
   const [adminToken, setAdminToken] = useState("");
+  const tracked = useRef(new Set<string>());
+
+  function trackOnce(key: string, eventName: string, params?: Record<string, string | number>) {
+    if (tracked.current.has(key)) return;
+    tracked.current.add(key);
+    trackEvent(eventName, params);
+  }
 
   useEffect(() => {
     setAdminToken(loadAdminToken(viewToken));
@@ -53,6 +45,7 @@ export default function ResultPage({ params }: { params: Promise<{ viewToken: st
         const a = await getAnalysis(viewToken);
         if (cancelled) return;
         if (!a) {
+          trackOnce("not_found", "result_failed", { reason: "not_found" });
           setStatus("failed");
           return;
         }
@@ -68,8 +61,12 @@ export default function ResultPage({ params }: { params: Promise<{ viewToken: st
             return;
           }
           setResult(r);
+          trackOnce("loaded", "result_loaded", {
+            analysis_duration_ms: Math.max(0, Date.now() - new Date(a.createdAt).getTime()),
+          });
           setStatus("done");
         } else if (a.status === "FAILED") {
+          trackOnce("failed", "result_failed", { reason: "analysis_failed" });
           setStatus("failed");
         } else {
           // ANALYZING: 2.5초 간격으로 최대 40회 폴링
@@ -79,11 +76,15 @@ export default function ResultPage({ params }: { params: Promise<{ viewToken: st
             timer = setTimeout(tick, POLL_INTERVAL_MS);
           } else {
             // 서버는 계속 분석 중일 수 있으므로 실패가 아니라 "오래 걸림"으로 안내한다.
+            trackOnce("timeout", "result_timeout");
             setStatus("timeout");
           }
         }
       } catch {
-        if (!cancelled) setStatus("failed");
+        if (!cancelled) {
+          trackOnce("network_error", "result_failed", { reason: "network" });
+          setStatus("failed");
+        }
       }
     }
 
@@ -98,6 +99,7 @@ export default function ResultPage({ params }: { params: Promise<{ viewToken: st
     if (!adminToken) return;
     try {
       await startAnalysis(adminToken);
+      trackEvent("analysis_retry_requested");
     } catch {
       // 재시작 실패는 이어지는 폴링에서 FAILED로 다시 드러난다.
     }
@@ -105,8 +107,16 @@ export default function ResultPage({ params }: { params: Promise<{ viewToken: st
     setAttempt((n) => n + 1);
   }
 
-  /** 타임아웃 시 분석을 다시 돌리지 않고 폴링만 이어서 재개한다. */
-  function handleResume() {
+  /** 타임아웃 시 stale 작업이면 서버가 회수할 기회를 준 뒤 폴링을 재개한다. */
+  async function handleResume() {
+    if (adminToken) {
+      try {
+        await startAnalysis(adminToken);
+        trackEvent("analysis_recovery_checked");
+      } catch {
+        // 활성 작업이거나 재시도 상한에 닿은 경우에도 상태 조회는 계속할 수 있다.
+      }
+    }
     setStatus("loading");
     setAttempt((n) => n + 1);
   }
@@ -168,38 +178,4 @@ export default function ResultPage({ params }: { params: Promise<{ viewToken: st
   }
 
   return <AnalyzingState />;
-}
-
-function ResultView({
-  view,
-  result,
-  viewToken,
-}: {
-  view: ViewData;
-  result: AnalysisResultView;
-  viewToken: string;
-}) {
-  return (
-    <main className="min-h-screen bg-[#FFFBF3] pb-12 dark:bg-[#171310]">
-      <div className="mx-auto max-w-[480px] space-y-6 px-4 py-8">
-        <Headline view={view} result={result} />
-        <AiComment result={result} />
-        <AffinityChart view={view} result={result} />
-        <MoodStrip result={result} />
-        <Timeline events={result.timeline} />
-        <Habits result={result} view={view} />
-        <FunFacts view={view} result={result} />
-        <Keywords keywords={result.keywords} />
-        <InsideJokes result={result} />
-        <MovieCard result={result} />
-        <PersonaCards view={view} result={result} />
-        <Highlights highlights={result.highlights} />
-        <TopicSuggestion result={result} />
-        <ShareBar viewToken={viewToken} />
-        <NewAnalysisCta />
-        <PrivacyNote />
-        <DeleteButton viewToken={viewToken} />
-      </div>
-    </main>
-  );
 }

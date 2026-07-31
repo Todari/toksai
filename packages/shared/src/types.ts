@@ -16,7 +16,11 @@ export interface ParsedChat {
   endedAt: Date;
 }
 
-export type ParseErrorCode = "NO_MESSAGES" | "NOT_ONE_TO_ONE";
+export type ParseErrorCode =
+  | "NO_MESSAGES"
+  | "NOT_ONE_TO_ONE"
+  | "CHAT_TOO_LARGE"
+  | "CHAT_TOO_LONG";
 
 export class ParseError extends Error {
   constructor(public code: ParseErrorCode, message: string) {

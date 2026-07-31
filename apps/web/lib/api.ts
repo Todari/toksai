@@ -9,13 +9,28 @@ export const trpc = createTRPCClient<AppRouter>({
 
 export interface UploadResult { id: string; viewToken: string; adminToken: string }
 
+export class UploadApiError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "UploadApiError";
+  }
+}
+
 export async function uploadFile(file: File): Promise<UploadResult> {
   const fd = new FormData();
   fd.append("file", file);
   const res = await fetch(`${API}/upload`, { method: "POST", body: fd });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: "업로드 실패" }));
-    throw new Error(err.message ?? "업로드 실패");
+    throw new UploadApiError(
+      typeof err.message === "string" ? err.message : "업로드 실패",
+      typeof err.code === "string" ? err.code : `HTTP_${res.status}`,
+      res.status,
+    );
   }
   return res.json();
 }

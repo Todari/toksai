@@ -47,7 +47,9 @@ function FactTile({
       </div>
       <p className="mt-1.5 text-[15px] font-bold text-neutral-800 dark:text-neutral-100">{value}</p>
       {detail && (
-        <p className="mt-0.5 text-[11px] leading-snug text-neutral-400 dark:text-neutral-500">{detail}</p>
+        <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-neutral-400 dark:text-neutral-500">
+          {detail}
+        </p>
       )}
     </div>
   );

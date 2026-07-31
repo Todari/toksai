@@ -1,18 +1,22 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import type { PrismaClient } from "@toksai/db";
 import {
   parseKakao, computeStats, bucketByMonth, renderBucketText, mapWithConcurrency,
 } from "@toksai/shared";
 import type { AffinityPoint, AnalysisResultView, BucketAnalysis } from "@toksai/shared";
+import type { Message, TimelineEvent, Highlight } from "@toksai/shared";
 import { CryptoService } from "../common/crypto/crypto.service";
 import type { LlmClient } from "../gemini/llm-client";
 import { bucketZod, bucketResponseSchema, synthesisZod, synthesisResponseSchema } from "./schemas";
 import { SYSTEM_INSTRUCTION, buildBucketPrompt, buildSynthesisPrompt } from "./prompts";
 
 const BUCKET_CONCURRENCY = 3;
+const STALE_JOB_MS = 3 * 60 * 1000;
+const MAX_ANALYSIS_ATTEMPTS = 3;
+const MIN_BUCKET_COVERAGE = 0.6;
 
 @Injectable()
-export class AnalysisRunnerService {
+export class AnalysisRunnerService implements OnModuleInit {
   private readonly logger = new Logger(AnalysisRunnerService.name);
 
   constructor(
@@ -21,9 +25,18 @@ export class AnalysisRunnerService {
     private readonly llm: LlmClient,
   ) {}
 
+  async onModuleInit(): Promise<void> {
+    try {
+      await this.recoverStaleJobs();
+    } catch (e) {
+      // 복구 점검 실패가 서버 자체의 기동을 막지는 않게 한다.
+      this.logger.error(`stale job recovery failed: ${String(e)}`);
+    }
+  }
+
   async run(analysisId: string): Promise<void> {
     try {
-      await this.prisma.analysis.update({ where: { id: analysisId }, data: { status: "ANALYZING" } });
+      await this.heartbeat(analysisId);
       const analysis = await this.prisma.analysis.findUnique({
         where: { id: analysisId },
         include: { participants: true, rawChat: true },
@@ -40,24 +53,39 @@ export class AnalysisRunnerService {
       const parsed = parseKakao(text);
       const stats = computeStats(parsed.messages);
       const buckets = bucketByMonth(parsed.messages);
+      let ungroundedQuotesRemoved = 0;
 
       const bucketResults = (await mapWithConcurrency(buckets, BUCKET_CONCURRENCY, async (b) => {
         try {
-          return await this.llm.generateJson<BucketAnalysis>(
+          await this.heartbeat(analysisId);
+          const source = renderBucketText(b);
+          const generated = await this.llm.generateJson<BucketAnalysis>(
             {
               systemInstruction: SYSTEM_INSTRUCTION,
-              prompt: buildBucketPrompt({ ...people, month: b.month, text: renderBucketText(b) }),
+              prompt: buildBucketPrompt({ ...people, month: b.month, text: source }),
               responseSchema: bucketResponseSchema,
             },
             bucketZod,
           );
+          const grounded = this.groundBucketQuotes(generated, b.messages);
+          ungroundedQuotesRemoved += grounded.removed;
+          await this.heartbeat(analysisId);
+          return { ...grounded.value, month: b.month };
         } catch (e) {
           this.logger.warn(`bucket ${b.month} failed: ${String(e)}`);
           return null;
         }
       })).filter((x): x is BucketAnalysis => x !== null);
 
+      const coverage = buckets.length === 0 ? 0 : bucketResults.length / buckets.length;
+      if (coverage < MIN_BUCKET_COVERAGE) {
+        throw new Error(
+          `INSUFFICIENT_BUCKET_COVERAGE:${bucketResults.length}/${buckets.length}`,
+        );
+      }
+
       const statsSummary = this.summarizeStats(stats, people);
+      await this.heartbeat(analysisId);
       const synthesis = await this.llm.generateJson<Omit<AnalysisResultView, "stats" | "affinitySeries">>(
         {
           systemInstruction: SYSTEM_INSTRUCTION,
@@ -77,6 +105,21 @@ export class AnalysisRunnerService {
         if (name === people.rawB || name === people.nickB) return people.rawB;
         return null;
       };
+      const normalizedSynthesis = {
+        ...synthesis,
+        personas: synthesis.personas
+          .map((persona) => {
+            const rawName = canon(persona.rawName);
+            return rawName ? { ...persona, rawName } : null;
+          })
+          .filter((persona): persona is NonNullable<typeof persona> => persona !== null),
+        badges: synthesis.badges
+          .map((badge) => {
+            const rawName = canon(badge.rawName);
+            return rawName ? { ...badge, rawName } : null;
+          })
+          .filter((badge): badge is NonNullable<typeof badge> => badge !== null),
+      };
       const affinitySeries: AffinityPoint[] = bucketResults.map((b) => {
         const scores: Record<string, number> = {};
         for (const a of b.affinity) {
@@ -86,24 +129,142 @@ export class AnalysisRunnerService {
         return { month: b.month, scores };
       });
 
-      const result: AnalysisResultView = { stats, affinitySeries, ...synthesis };
+      const groundedSynthesis = this.groundSynthesisQuotes(normalizedSynthesis, parsed.messages);
+      ungroundedQuotesRemoved += groundedSynthesis.removed;
+      const result: AnalysisResultView = {
+        stats,
+        affinitySeries,
+        ...groundedSynthesis.value,
+        extras: {
+          ...groundedSynthesis.value.extras,
+          quality: {
+            analyzedBuckets: bucketResults.length,
+            totalBuckets: buckets.length,
+            coveragePercent: Math.round(coverage * 100),
+            ungroundedQuotesRemoved,
+          },
+        },
+      };
 
       await this.prisma.analysisResult.upsert({
         where: { analysisId },
         create: { analysisId, ...this.toJsonColumns(result) },
         update: this.toJsonColumns(result),
       });
-      await this.prisma.analysis.update({ where: { id: analysisId }, data: { status: "DONE" } });
+      await this.prisma.analysis.update({
+        where: { id: analysisId },
+        data: { status: "DONE", heartbeatAt: null },
+      });
     } catch (e) {
       // FAILED 전이가 다시 실패해도 원본 에러를 가리지 않는다.
       try {
-        await this.prisma.analysis.update({ where: { id: analysisId }, data: { status: "FAILED" } });
+        await this.prisma.analysis.update({
+          where: { id: analysisId },
+          data: { status: "FAILED", heartbeatAt: null },
+        });
       } catch (e2) {
         this.logger.error(`failed to mark ${analysisId} FAILED: ${String(e2)}`);
       }
       this.logger.error(`analysis ${analysisId} failed: ${String(e)}`);
       throw e;
     }
+  }
+
+  private async heartbeat(analysisId: string): Promise<void> {
+    const touched = await this.prisma.analysis.updateMany({
+      where: { id: analysisId, status: "ANALYZING" },
+      data: { heartbeatAt: new Date() },
+    });
+    if (touched.count !== 1) throw new Error("ANALYSIS_JOB_NOT_ACTIVE");
+  }
+
+  private async recoverStaleJobs(): Promise<void> {
+    const staleBefore = new Date(Date.now() - STALE_JOB_MS);
+    await this.prisma.analysis.updateMany({
+      where: {
+        status: "ANALYZING",
+        attemptCount: { gte: MAX_ANALYSIS_ATTEMPTS },
+        OR: [{ heartbeatAt: null }, { heartbeatAt: { lt: staleBefore } }],
+      },
+      data: { status: "FAILED", heartbeatAt: null },
+    });
+    const jobs = await this.prisma.analysis.findMany({
+      where: {
+        status: "ANALYZING",
+        attemptCount: { lt: MAX_ANALYSIS_ATTEMPTS },
+        OR: [{ heartbeatAt: null }, { heartbeatAt: { lt: staleBefore } }],
+      },
+      select: { id: true, heartbeatAt: true },
+    });
+
+    for (const job of jobs) {
+      const now = new Date();
+      const claimed = await this.prisma.analysis.updateMany({
+        where: {
+          id: job.id,
+          status: "ANALYZING",
+          heartbeatAt: job.heartbeatAt,
+        },
+        data: {
+          jobStartedAt: now,
+          heartbeatAt: now,
+          attemptCount: { increment: 1 },
+        },
+      });
+      if (claimed.count === 1) void this.run(job.id).catch(() => {});
+    }
+  }
+
+  private normalizeQuote(value: string): string {
+    return value
+      .normalize("NFKC")
+      .replace(/[“”"'`]/g, "")
+      .replace(/\s+/g, "")
+      .trim();
+  }
+
+  private quoteExists(quote: string, messages: Message[]): boolean {
+    const needle = this.normalizeQuote(quote);
+    if (needle.length < 2) return false;
+    return messages.some((message) => this.normalizeQuote(message.text).includes(needle));
+  }
+
+  private groundBucketQuotes(
+    value: BucketAnalysis,
+    messages: Message[],
+  ): { value: BucketAnalysis; removed: number } {
+    let removed = 0;
+    const events = value.events.map((event) => {
+      if (!event.quote || this.quoteExists(event.quote, messages)) return event;
+      removed += 1;
+      const { quote: _quote, ...withoutQuote } = event;
+      return withoutQuote;
+    });
+    const highlights = value.highlights.filter((highlight) => {
+      const grounded = this.quoteExists(highlight.quote, messages);
+      if (!grounded) removed += 1;
+      return grounded;
+    });
+    return { value: { ...value, events, highlights }, removed };
+  }
+
+  private groundSynthesisQuotes<T extends Omit<AnalysisResultView, "stats" | "affinitySeries">>(
+    value: T,
+    messages: Message[],
+  ): { value: T; removed: number } {
+    let removed = 0;
+    const timeline: TimelineEvent[] = value.timeline.map((event) => {
+      if (!event.quote || this.quoteExists(event.quote, messages)) return event;
+      removed += 1;
+      const { quote: _quote, ...withoutQuote } = event;
+      return withoutQuote;
+    });
+    const highlights: Highlight[] = value.highlights.filter((highlight) => {
+      const grounded = this.quoteExists(highlight.quote, messages);
+      if (!grounded) removed += 1;
+      return grounded;
+    });
+    return { value: { ...value, timeline, highlights }, removed };
   }
 
   private toJsonColumns(r: AnalysisResultView) {

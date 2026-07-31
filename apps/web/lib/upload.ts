@@ -1,11 +1,11 @@
 export const GENERIC_UPLOAD_ERROR = "업로드에 실패했어요. 잠시 후 다시 시도해 주세요.";
 export const NETWORK_UPLOAD_ERROR = "서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.";
-export const UNSUPPORTED_FILE_ERROR = "지원하지 않는 파일이에요. 카카오톡 대화 내보내기 파일(.zip, .txt)을 올려주세요.";
+export const UNSUPPORTED_FILE_ERROR = "지원하지 않는 파일이에요. 카카오톡 대화 내보내기 파일(.zip, .txt, .csv)을 올려주세요.";
 
-/** 카카오톡 대화 내보내기 파일(.zip/.txt)인지 확장자로 판별한다. */
+/** 카카오톡 대화 내보내기 파일(.zip/.txt/.csv)인지 확장자로 판별한다. */
 export function isSupportedChatFile(fileName: string): boolean {
   const lower = fileName.toLowerCase();
-  return lower.endsWith(".zip") || lower.endsWith(".txt");
+  return lower.endsWith(".zip") || lower.endsWith(".txt") || lower.endsWith(".csv");
 }
 
 /**

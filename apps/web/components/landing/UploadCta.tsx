@@ -1,7 +1,8 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState, type DragEvent } from "react";
-import { uploadFile, saveAdminToken } from "../../lib/api";
+import { UploadApiError, uploadFile, saveAdminToken } from "../../lib/api";
+import { fileKind, fileSizeBucket, trackEvent } from "../../lib/analytics";
 import { isSupportedChatFile, toFriendlyUploadError, UNSUPPORTED_FILE_ERROR } from "../../lib/upload";
 
 /**
@@ -17,16 +18,31 @@ export function UploadCta() {
   async function onFile(file: File) {
     if (!isSupportedChatFile(file.name)) {
       setError(UNSUPPORTED_FILE_ERROR);
+      trackEvent("upload_failed", { error_code: "CLIENT_UNSUPPORTED_FILE" });
       return;
     }
+    const startedAt = performance.now();
+    const kind = fileKind(file.name);
+    trackEvent("upload_selected", {
+      file_kind: kind,
+      size_bucket: fileSizeBucket(file.size),
+    });
     setBusy(true);
     setError(null);
     try {
       const r = await uploadFile(file);
       saveAdminToken(r.viewToken, r.adminToken);
+      trackEvent("upload_succeeded", {
+        file_kind: kind,
+        elapsed_ms: Math.round(performance.now() - startedAt),
+      });
       router.push(`/a/${r.viewToken}/identify`);
       // 성공 시에는 페이지 이동이 끝날 때까지 busy 상태를 유지한다.
     } catch (e) {
+      trackEvent("upload_failed", {
+        file_kind: kind,
+        error_code: e instanceof UploadApiError ? e.code : e instanceof TypeError ? "NETWORK" : "UNKNOWN",
+      });
       setError(toFriendlyUploadError(e));
       setBusy(false);
     }
@@ -65,12 +81,12 @@ export function UploadCta() {
             {busy ? "분석 준비 중…" : dragging ? "여기에 놓아주세요!" : "여기에 파일을 올리거나 클릭"}
           </span>
           <span className="mt-1 block text-xs text-neutral-400 dark:text-neutral-500">
-            카카오톡 대화 내보내기 파일(.zip, .txt)
+            카카오톡 대화 내보내기 파일(.zip, .txt, .csv)
           </span>
         </span>
         <input
           type="file"
-          accept=".zip,.txt"
+          accept=".zip,.txt,.csv"
           className="hidden"
           disabled={busy}
           onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}

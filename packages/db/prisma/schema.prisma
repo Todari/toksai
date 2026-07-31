@@ -17,17 +17,22 @@ enum AnalysisStatus {
 }
 
 model Analysis {
-  id         String         @id @default(cuid())
-  viewToken  String         @unique
-  adminToken String         @unique
-  status     AnalysisStatus @default(PENDING)
-  sourceType String         @default("upload")
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+  id           String         @id @default(cuid())
+  viewToken    String         @unique
+  adminToken   String         @unique
+  status       AnalysisStatus @default(PENDING)
+  sourceType   String         @default("upload")
+  jobStartedAt DateTime?
+  heartbeatAt  DateTime?
+  attemptCount Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
   participants Participant[]
   rawChat      RawChat?
   result       AnalysisResult?
+
+  @@index([status, heartbeatAt])
 }
 
 model Participant {

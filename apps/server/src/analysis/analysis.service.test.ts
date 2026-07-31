@@ -45,3 +45,48 @@ describe("AnalysisService.createFromUpload", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("AnalysisService.start", () => {
+  it("동시에 두 번 호출돼도 분석 러너는 한 번만 시작한다", async () => {
+    let claimed = false;
+    const prisma = {
+      analysis: {
+        findUnique: vi.fn(async () => ({
+          id: "a1",
+          status: claimed ? "ANALYZING" : "IDENTIFYING",
+          attemptCount: claimed ? 1 : 0,
+          heartbeatAt: claimed ? new Date() : null,
+        })),
+        updateMany: vi.fn(async () => {
+          if (claimed) return { count: 0 };
+          claimed = true;
+          return { count: 1 };
+        }),
+      },
+    } as any;
+    const runner = { run: vi.fn(async () => {}) } as any;
+    const crypto = new CryptoService(randomBytes(32).toString("base64"));
+    const svc = new AnalysisService(prisma, new FileExtractService(), crypto, runner);
+
+    await Promise.all([svc.start("admin", "127.0.0.1"), svc.start("admin", "127.0.0.1")]);
+
+    expect(runner.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("완료된 분석은 다시 실행하지 않는다", async () => {
+    const prisma = {
+      analysis: {
+        findUnique: vi.fn(async () => ({
+          id: "a1", status: "DONE", attemptCount: 1, heartbeatAt: null,
+        })),
+        updateMany: vi.fn(),
+      },
+    } as any;
+    const runner = { run: vi.fn(async () => {}) } as any;
+    const crypto = new CryptoService(randomBytes(32).toString("base64"));
+    const svc = new AnalysisService(prisma, new FileExtractService(), crypto, runner);
+
+    await expect(svc.start("admin", "127.0.0.1")).resolves.toEqual({ ok: true });
+    expect(runner.run).not.toHaveBeenCalled();
+  });
+});

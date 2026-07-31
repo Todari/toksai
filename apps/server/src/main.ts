@@ -12,11 +12,15 @@ async function bootstrap() {
 
   const analysisService = app.get(AnalysisService);
   const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.set("trust proxy", 1);
   expressApp.use(
     "/trpc",
     createExpressMiddleware({
       router: appRouter,
-      createContext: () => ({ analysis: analysisService }),
+      createContext: ({ req }) => ({
+        analysis: analysisService,
+        clientIp: req.ip ?? req.socket.remoteAddress ?? "unknown",
+      }),
     }),
   );
 

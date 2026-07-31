@@ -2,6 +2,7 @@
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { trpc, loadAdminToken, startAnalysis } from "../../../../lib/api";
+import { trackEvent } from "../../../../lib/analytics";
 
 type P = { id: string; rawName: string; nickname: string | null };
 
@@ -36,8 +37,10 @@ export default function Identify({ params }: { params: Promise<{ viewToken: stri
       // "둘 중 나" 선택 없이 닉네임만 저장(소유자 표시 없음).
       await trpc.analysis.identify.mutate({ adminToken, ownerRawName: "", nicknames: nick });
       await startAnalysis(adminToken); // 분석 시작(fire-and-forget 서버측)
+      trackEvent("analysis_started");
       router.push(`/a/${viewToken}`);
     } catch {
+      trackEvent("analysis_start_failed");
       setError("분석 시작에 실패했어요. 잠시 후 다시 시도해주세요.");
       setBusy(false);
     }

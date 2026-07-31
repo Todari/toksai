@@ -1,3 +1,8 @@
 import type { NextConfig } from "next";
-const config: NextConfig = { transpilePackages: ["@toksai/api"] };
+import path from "node:path";
+
+const config: NextConfig = {
+  transpilePackages: ["@toksai/api"],
+  turbopack: { root: path.resolve(process.cwd(), "../..") },
+};
 export default config;

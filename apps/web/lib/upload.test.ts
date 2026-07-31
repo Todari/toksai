@@ -2,9 +2,10 @@ import { describe, it, expect } from "vitest";
 import { isSupportedChatFile, toFriendlyUploadError } from "./upload";
 
 describe("isSupportedChatFile", () => {
-  it("zip/txt만 허용(대소문자 무관)", () => {
+  it("zip/txt/csv만 허용(대소문자 무관)", () => {
     expect(isSupportedChatFile("chat.txt")).toBe(true);
     expect(isSupportedChatFile("KakaoTalk_Chat.ZIP")).toBe(true);
+    expect(isSupportedChatFile("KakaoTalk_Chat.CSV")).toBe(true);
     expect(isSupportedChatFile("photo.png")).toBe(false);
     expect(isSupportedChatFile("chat")).toBe(false);
   });

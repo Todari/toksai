@@ -129,3 +129,45 @@ describe("parseKakao (iOS, 24시간제·분할 zip)", () => {
     expect(r.messages[0].text).toBe("마지막 메시지");
   });
 });
+
+describe("parseKakao (Android/PC TXT)", () => {
+  it("날짜 구분선과 [이름] [시간] 형식을 파싱한다", () => {
+    const raw = `철수님과 카카오톡 대화
+저장한 날짜 : 2026. 7. 30. 오후 2:00
+
+--------------- 2026년 7월 29일 수요일 ---------------
+[철수] [오후 2:30] 야 뭐해?
+[영희] [오후 2:31] 집에서 쉬고 있어 ㅋㅋ
+둘째 줄
+
+--------------- 2026년 7월 30일 목요일 ---------------
+[철수] [오전 12:05] 잘 자`;
+    const result = parseKakao(raw);
+    expect(result.messages).toHaveLength(3);
+    expect(result.messages[1]).toMatchObject({
+      author: "영희",
+      text: "집에서 쉬고 있어 ㅋㅋ\n둘째 줄",
+    });
+    expect(result.messages[2].at.getHours()).toBe(0);
+  });
+
+  it("각 메시지에 한글 날짜가 포함된 PC 형식을 파싱한다", () => {
+    const raw = `2026년 7월 29일 오후 2:30, 철수 : 안녕
+2026년 7월 29일 오후 2:31, 영희 : 반가워`;
+    const result = parseKakao(raw);
+    expect(result.messages.map((message) => message.text)).toEqual(["안녕", "반가워"]);
+  });
+});
+
+describe("parseKakao (PC/Mac CSV)", () => {
+  it("쉼표·따옴표·멀티라인이 든 CSV 메시지를 파싱한다", () => {
+    const raw = `Date,User,Message
+2026-07-29 14:30:00,"철수","안녕, 오늘 뭐해?"
+2026-07-29 14:31:00,"영희","첫 줄
+둘째 ""인용"" 줄"`;
+    const result = parseKakao(raw);
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0].text).toBe("안녕, 오늘 뭐해?");
+    expect(result.messages[1].text).toBe('첫 줄\n둘째 "인용" 줄');
+  });
+});

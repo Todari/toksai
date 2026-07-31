@@ -1,4 +1,5 @@
 import { UploadCta } from "./UploadCta";
+import { SampleReportLink } from "./SampleReportLink";
 
 /** 랜딩 최상단 히어로: 워드마크 + 태그라인 + 서브카피 + 업로드 CTA. */
 export function Hero() {
@@ -32,10 +33,12 @@ export function Hero() {
         </p>
 
         <p className="mx-auto mt-3 max-w-[36ch] text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
-          카카오톡 대화 내보내기(zip/txt)를 올리면 둘 사이를 분석해 드려요. 재미로 보는 관심 신호예요.
+          카카오톡 대화 내보내기(zip/txt/csv)를 올리면 둘 사이를 분석해 드려요. 재미로 보는 관심
+          신호예요.
         </p>
 
         <UploadCta />
+        <SampleReportLink />
       </div>
     </section>
   );

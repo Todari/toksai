@@ -11,21 +11,43 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    mem_limit: 512m
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
   server:
-    build: { context: ., dockerfile: apps/server/Dockerfile }
+    image: ${TOKSAI_SERVER_IMAGE:?TOKSAI_SERVER_IMAGE is required}
+    init: true
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/toksai
       GEMINI_API_KEY: ${GEMINI_API_KEY:?GEMINI_API_KEY is required}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
       FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL is required}
+      NODE_OPTIONS: --max-old-space-size=512
       PORT: "4100"
       NODE_ENV: production
       TZ: Asia/Seoul
     depends_on:
       postgres: { condition: service_healthy }
     ports: ["127.0.0.1:4100:4100"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4100/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    mem_limit: 768m
     restart: unless-stopped
+    stop_grace_period: 30s
+    security_opt: ["no-new-privileges:true"]
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }

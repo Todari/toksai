@@ -26,7 +26,9 @@ describe("bucketByMonth", () => {
 describe("renderBucketText", () => {
   it("이름: 내용 줄로 렌더", () => {
     const b = bucketByMonth([m("김", "2025-01-01T10:00:00", "안녕"), m("이", "2025-01-01T10:01:00", "하이")])[0];
-    expect(renderBucketText(b)).toBe("김: 안녕\n이: 하이");
+    expect(renderBucketText(b)).toBe(
+      "[2025-01-01 10:00] 김: 안녕\n[2025-01-01 10:01] 이: 하이",
+    );
   });
 
   it("maxChars 초과 시 앞뒤를 보존하며 잘라낸다", () => {
@@ -37,5 +39,14 @@ describe("renderBucketText", () => {
     expect(out.length).toBeLessThanOrEqual(200 + 40); // 여유(생략 표시 포함)
     expect(out).toContain("msg0");                    // 앞 보존
     expect(out).toContain("msg499");                  // 끝 보존
+  });
+
+  it("샘플링된 메시지는 홀로 떨어지지 않고 앞뒤 문맥과 함께 남는다", () => {
+    const many: Message[] = Array.from({ length: 120 }, (_, i) =>
+      m(i % 2 ? "A" : "B", `2025-01-01T10:${String(i % 60).padStart(2, "0")}:00`, `turn-${i}`));
+    const out = renderBucketText(bucketByMonth(many)[0], 600);
+    const indexes = [...out.matchAll(/turn-(\d+)/g)].map((match) => Number(match[1]));
+    expect(indexes.some((value, i) => i > 0 && value === indexes[i - 1] + 1)).toBe(true);
+    expect(out).toContain("중간 대화 생략");
   });
 });

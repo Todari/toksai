@@ -85,6 +85,12 @@ export interface AnalysisExtras {
   insideJokes: string[];
   moodSeries: { month: string; mood: string; note: string }[];
   topicSuggestion: string;
+  quality?: {
+    analyzedBuckets: number;
+    totalBuckets: number;
+    coveragePercent: number;
+    ungroundedQuotesRemoved: number;
+  };
 }
 
 export interface AnalysisResultView {

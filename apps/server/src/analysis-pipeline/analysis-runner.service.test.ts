@@ -11,7 +11,7 @@ const RAW = `2025. 1. 1. 오후 1:00, 김승현 : 뭐해?
 function makePrisma(encryptedText: string) {
   const store: any = {
     analysis: {
-      id: "a1", status: "IDENTIFYING",
+      id: "a1", status: "ANALYZING", heartbeatAt: new Date(), attemptCount: 1,
       participants: [
         { rawName: "김승현", nickname: "승현", isOwner: true },
         { rawName: "곽민성", nickname: "민성", isOwner: false },
@@ -23,8 +23,18 @@ function makePrisma(encryptedText: string) {
   return {
     _store: store,
     analysis: {
-      update: vi.fn(async ({ data }: any) => { store.analysis.status = data.status; return store.analysis; }),
+      update: vi.fn(async ({ data }: any) => {
+        Object.assign(store.analysis, data);
+        return store.analysis;
+      }),
+      updateMany: vi.fn(async ({ where, data }: any) => {
+        if (where.id && where.id !== store.analysis.id) return { count: 0 };
+        if (where.status && where.status !== store.analysis.status) return { count: 0 };
+        Object.assign(store.analysis, data);
+        return { count: 1 };
+      }),
       findUnique: vi.fn(async () => store.analysis),
+      findMany: vi.fn(async () => []),
     },
     analysisResult: {
       upsert: vi.fn(async ({ create }: any) => { store.result = create; return create; }),
@@ -38,7 +48,8 @@ const bucketReturn = (month: string) => () => ({
     { from: "김승현", to: "곽민성", score: 70, reason: "r" },
     { from: "곽민성", to: "김승현", score: 60, reason: "r" },
   ],
-  keywords: ["k"], highlights: [{ quote: "q", caption: "c", kind: "funny" }],
+  keywords: ["k"],
+  highlights: [{ quote: month === "2025-02" ? "자니?" : "뭐해?", caption: "c", kind: "funny" }],
 });
 
 const synthesisReturn = () => ({
@@ -48,7 +59,7 @@ const synthesisReturn = () => ({
   badges: [{ rawName: "김승현", badgeId: "first_texter", reason: "선톡많음" }],
   chemiScore: 82,
   relationType: { code: "WARM", label: "티키타카", description: "d" },
-  highlights: [{ quote: "q", caption: "c", kind: "flutter" }],
+  highlights: [{ quote: "뭐해?", caption: "c", kind: "flutter" }],
   extras: {
     movie: { title: "너의 이름은", reason: "r" },
     aiComment: "좋아요",
@@ -69,12 +80,19 @@ describe("AnalysisRunnerService.run", () => {
 
     await runner.run("a1");
 
-    expect(prisma.analysis.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "ANALYZING" }) }));
+    expect(prisma.analysis.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ status: "ANALYZING" }) }),
+    );
     const saved = prisma.analysisResult.upsert.mock.calls[0][0].create;
     expect(saved.chemiScore).toBe(82);
     expect(saved.stats.totalMessages).toBe(3);
     expect(saved.affinitySeries.length).toBe(2); // 월 2개
     expect(saved.affinitySeries[0].scores["김승현"]).toBe(70);
+    expect(saved.extras.quality).toMatchObject({
+      analyzedBuckets: 2,
+      totalBuckets: 2,
+      coveragePercent: 100,
+    });
     expect(prisma._store.analysis.status).toBe("DONE");
   });
 
@@ -88,13 +106,24 @@ describe("AnalysisRunnerService.run", () => {
         { from: "민성", to: "승현", score: 44, reason: "r" },
       ],
     });
-    const fake = new FakeLlmClient([nickBucket("2025-01"), nickBucket("2025-02"), synthesisReturn]);
+    const nickSynthesis = () => ({
+      ...synthesisReturn(),
+      personas: [
+        { rawName: "승현", oneLiner: "직진러" },
+        { rawName: "민성", oneLiner: "츤데레" },
+      ],
+    });
+    const fake = new FakeLlmClient([nickBucket("2025-01"), nickBucket("2025-02"), nickSynthesis]);
     const runner = new AnalysisRunnerService(prisma, crypto, fake);
     await runner.run("a1");
     const saved = prisma.analysisResult.upsert.mock.calls[0][0].create;
     expect(saved.affinitySeries[0].scores["김승현"]).toBe(55); // "승현" → rawName
     expect(saved.affinitySeries[0].scores["곽민성"]).toBe(44);
     expect(saved.affinitySeries[0].scores["승현"]).toBeUndefined();
+    expect(saved.personas.map((persona: { rawName: string }) => persona.rawName)).toEqual([
+      "김승현",
+      "곽민성",
+    ]);
   });
 
   it("솔직 하이라이트 종류(banter/awkward/clash)도 스키마를 통과해 저장된다", async () => {
@@ -109,8 +138,8 @@ describe("AnalysisRunnerService.run", () => {
       chemiScore: 34,
       relationType: { code: "COLD", label: "서먹한 사이", description: "d" },
       highlights: [
-        { quote: "q1", caption: "c1", kind: "awkward" },
-        { quote: "q2", caption: "c2", kind: "clash" },
+        { quote: "뭐해?", caption: "c1", kind: "awkward" },
+        { quote: "그냥 있어 ㅋㅋ", caption: "c2", kind: "clash" },
       ],
     });
     const fake = new FakeLlmClient([honestBucket("2025-01"), honestBucket("2025-02"), honestSynthesis]);
@@ -131,5 +160,43 @@ describe("AnalysisRunnerService.run", () => {
     const runner = new AnalysisRunnerService(prisma, crypto, throwing);
     await expect(runner.run("a1")).rejects.toThrow();
     expect(prisma._store.analysis.status).toBe("FAILED");
+  });
+
+  it("원문에 없는 인용은 결과에서 제거하고 품질 메타에 기록한다", async () => {
+    const crypto = new CryptoService(randomBytes(32).toString("base64"));
+    const prisma = makePrisma(crypto.encrypt(RAW));
+    const fake = new FakeLlmClient([
+      bucketReturn("2025-01"),
+      bucketReturn("2025-02"),
+      () => ({
+        ...synthesisReturn(),
+        timeline: [{ date: "2025-01-01", title: "시작", summary: "s", quote: "지어낸 말" }],
+        highlights: [{ quote: "존재하지 않는 인용", caption: "c", kind: "funny" }],
+      }),
+    ]);
+    const runner = new AnalysisRunnerService(prisma, crypto, fake);
+
+    await runner.run("a1");
+
+    const saved = prisma.analysisResult.upsert.mock.calls[0][0].create;
+    expect(saved.timeline[0].quote).toBeUndefined();
+    expect(saved.highlights).toEqual([]);
+    expect(saved.extras.quality.ungroundedQuotesRemoved).toBe(2);
+  });
+});
+
+describe("AnalysisRunnerService stale recovery", () => {
+  it("서버 시작 시 오래 멈춘 ANALYZING 작업을 다시 실행한다", async () => {
+    const crypto = new CryptoService(randomBytes(32).toString("base64"));
+    const prisma = makePrisma(crypto.encrypt(RAW));
+    prisma.analysis.findMany.mockResolvedValue([{ id: "a1", heartbeatAt: null }]);
+    prisma.analysis.updateMany.mockResolvedValue({ count: 1 });
+    const runner = new AnalysisRunnerService(prisma, crypto, new FakeLlmClient([]));
+    const run = vi.spyOn(runner, "run").mockResolvedValue();
+
+    await runner.onModuleInit();
+    await Promise.resolve();
+
+    expect(run).toHaveBeenCalledWith("a1");
   });
 });

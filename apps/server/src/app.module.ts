@@ -9,12 +9,14 @@ import { AnalysisRunnerService } from "./analysis-pipeline/analysis-runner.servi
 import { GeminiService } from "./gemini/gemini.service";
 import { UploadController } from "./upload/upload.controller";
 import { HealthController } from "./health.controller";
+import { RateLimitService } from "./common/rate-limit.service";
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true, load: [configuration] })],
   controllers: [UploadController, HealthController],
   providers: [
     FileExtractService,
+    RateLimitService,
     { provide: CryptoService, useFactory: () => new CryptoService() },
     GeminiService,
     {
@@ -25,9 +27,13 @@ import { HealthController } from "./health.controller";
     },
     {
       provide: AnalysisService,
-      useFactory: (extractor: FileExtractService, crypto: CryptoService, runner: AnalysisRunnerService) =>
-        new AnalysisService(prisma, extractor, crypto, runner),
-      inject: [FileExtractService, CryptoService, AnalysisRunnerService],
+      useFactory: (
+        extractor: FileExtractService,
+        crypto: CryptoService,
+        runner: AnalysisRunnerService,
+        rateLimit: RateLimitService,
+      ) => new AnalysisService(prisma, extractor, crypto, runner, rateLimit),
+      inject: [FileExtractService, CryptoService, AnalysisRunnerService, RateLimitService],
     },
   ],
 })

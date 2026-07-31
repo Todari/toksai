@@ -1,5 +1,9 @@
 FROM node:22-bookworm-slim AS base
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates openssl \
+  && rm -rf /var/lib/apt/lists/* \
+  && corepack enable \
+  && corepack prepare pnpm@9.15.0 --activate
 WORKDIR /app
 
 FROM base AS build
@@ -13,7 +17,8 @@ RUN pnpm turbo build --filter=@toksai/server
 FROM base AS runtime
 COPY --from=build /app ./
 COPY apps/server/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh && chown node:node /entrypoint.sh
 ENV NODE_ENV=production
 EXPOSE 4100
+USER node
 ENTRYPOINT ["/entrypoint.sh"]
