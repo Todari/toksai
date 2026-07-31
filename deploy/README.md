@@ -37,6 +37,7 @@ chmod 700 ~/toksai
 
 cat > ~/toksai/.env.production <<'EOF'
 POSTGRES_PASSWORD=<강력한 랜덤 비밀번호>
+DATABASE_URL=postgresql://postgres:<URL 인코딩한 비밀번호>@postgres:5432/toksai
 GEMINI_API_KEY=<Gemini API 키>
 ENCRYPTION_KEY=<base64 32바이트>
 FRONTEND_URL=https://toksai.todari.dev
@@ -44,6 +45,9 @@ EOF
 
 chmod 600 ~/toksai/.env.production
 ```
+
+`DATABASE_URL`에는 `POSTGRES_PASSWORD`를 URL 인코딩한 값을 사용한다. 비밀번호의
+`+`, `/`, `=`, `@`, `:` 같은 문자를 그대로 넣으면 Prisma가 URL을 잘못 해석한다.
 
 `ENCRYPTION_KEY` 생성 예:
 

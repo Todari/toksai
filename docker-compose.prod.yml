@@ -21,7 +21,7 @@ services:
     image: ${TOKSAI_SERVER_IMAGE:?TOKSAI_SERVER_IMAGE is required}
     init: true
     environment:
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/toksai
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       GEMINI_API_KEY: ${GEMINI_API_KEY:?GEMINI_API_KEY is required}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
       FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL is required}
