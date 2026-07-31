@@ -36,6 +36,7 @@ export function UploadCta() {
   const [intakeStatus, setIntakeStatus] = useState<EmailIntakeStatus["status"]>("WAITING");
   const [emailError, setEmailError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   useEffect(() => {
     try {
@@ -177,10 +178,18 @@ export function UploadCta() {
 
   async function copyAddress() {
     if (!intake) return;
-    await navigator.clipboard.writeText(intake.address);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2_000);
-    trackEvent("email_address_copied");
+    setCopyFailed(false);
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API unavailable");
+      }
+      await navigator.clipboard.writeText(intake.address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3_000);
+      trackEvent("email_address_copied");
+    } catch {
+      setCopyFailed(true);
+    }
   }
 
   if (!started) {
@@ -233,7 +242,7 @@ export function UploadCta() {
               메일로 보내기
             </span>
             <span className="mt-1 block text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
-              카카오톡 내보내기에서 바로 메일로 보내요.
+              주소를 복사한 뒤 카톡에서 내보내면 자동으로 시작해요.
             </span>
           </button>
         </div>
@@ -260,29 +269,58 @@ export function UploadCta() {
 
         {intake ? (
           <>
-            <div className="mt-4 rounded-2xl bg-rose-50 p-3 dark:bg-rose-400/10">
-              <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-300">
-                이번 분석 전용 받는 사람
+            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-400/20 dark:bg-rose-400/10">
+              <p className="text-xs font-extrabold text-rose-600 dark:text-rose-300">
+                1. 받는 사람 주소를 복사하세요
               </p>
-              <p className="mt-1 break-all font-mono text-xs font-bold text-neutral-700 dark:text-neutral-200">
+              <p
+                className="mt-2 select-all break-all rounded-xl bg-white/80 px-3 py-2 font-mono text-xs font-bold leading-relaxed text-neutral-700 dark:bg-black/10 dark:text-neutral-200"
+                aria-label="이번 분석 전용 메일 주소"
+              >
                 {intake.address}
               </p>
               <button
                 onClick={() => void copyAddress()}
-                className="mt-2 w-full rounded-xl bg-white py-2 text-xs font-bold text-rose-600 shadow-sm dark:bg-white/10 dark:text-rose-300"
+                className="mt-3 w-full rounded-xl bg-rose-500 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-rose-600 active:scale-[0.99] dark:bg-rose-500 dark:hover:bg-rose-400"
               >
-                {copied ? "복사했어요 ✓" : "메일 주소 복사"}
+                {copied ? "✓ 복사 완료 — 카카오톡에 붙여넣으세요" : "📋 메일 주소 복사하기"}
               </button>
+              {copyFailed && (
+                <p className="mt-2 text-center text-[11px] leading-relaxed text-red-600 dark:text-red-300" role="alert">
+                  자동 복사가 막혔어요. 위 주소를 길게 눌러 직접 복사해주세요.
+                </p>
+              )}
             </div>
-            <ol className="mt-4 space-y-2 text-xs leading-relaxed text-neutral-600 dark:text-neutral-300">
-              <li><strong>1.</strong> 카카오톡 채팅방 설정에서 대화 내용 내보내기 → 메일을 선택해요.</li>
-              <li><strong>2.</strong> 위 주소를 받는 사람에 붙여넣고 전송해요.</li>
-              <li><strong>3.</strong> 이 화면이 메일을 확인하면 자동으로 다음 단계로 이동해요.</li>
-            </ol>
-            {waiting && !emailError && (
-              <p className="mt-4 text-center text-xs font-semibold text-rose-500" role="status">
-                {intakeStatus === "PROCESSING" ? "첨부파일을 안전하게 확인하고 있어요…" : "메일을 기다리고 있어요…"}
+
+            <div className="mt-3 rounded-2xl bg-neutral-50 p-4 dark:bg-white/5">
+              <p className="text-xs font-extrabold text-neutral-800 dark:text-neutral-100">
+                2. 카카오톡에서 대화를 내보내세요
               </p>
+              <p className="mt-2 text-xs font-semibold leading-relaxed text-neutral-700 dark:text-neutral-200">
+                채팅방 오른쪽 위 <span aria-label="메뉴">≡</span>
+                <span className="mx-1 text-neutral-300">→</span>
+                오른쪽 아래 <span aria-label="설정">⚙️</span>
+                <span className="mx-1 text-neutral-300">→</span>
+                대화 내용 내보내기
+              </p>
+              <ol className="mt-3 space-y-2 text-xs leading-relaxed text-neutral-600 dark:text-neutral-300">
+                <li><strong>①</strong> 텍스트만 보내기 또는 메일 앱을 선택해요.</li>
+                <li><strong>②</strong> 받는 사람에 복사한 주소를 붙여넣고 전송해요.</li>
+              </ol>
+              <p className="mt-3 rounded-xl bg-white px-3 py-2 text-[11px] leading-relaxed text-neutral-500 dark:bg-black/10 dark:text-neutral-400">
+                제목과 본문은 그대로 보내도 괜찮아요. <strong>.txt, .zip, .csv</strong> 파일만 첨부되어 있으면 돼요.
+              </p>
+            </div>
+
+            {waiting && !emailError && (
+              <div className="mt-3 rounded-2xl border border-dashed border-rose-200 px-4 py-3 text-center dark:border-rose-400/20" role="status">
+                <p className="text-xs font-bold text-rose-500">
+                  {intakeStatus === "PROCESSING" ? "첨부파일을 안전하게 확인하고 있어요…" : "3. 메일을 기다리고 있어요…"}
+                </p>
+                <p className="mt-1 text-[11px] leading-relaxed text-neutral-400 dark:text-neutral-500">
+                  전송 후 이 화면으로 돌아오면 자동으로 다음 단계로 이동해요.
+                </p>
+              </div>
             )}
           </>
         ) : (
