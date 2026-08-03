@@ -35,7 +35,10 @@ function renderMessage(m: Message): string {
     String(m.at.getMonth() + 1).padStart(2, "0"),
     String(m.at.getDate()).padStart(2, "0"),
   ].join("-") + ` ${String(m.at.getHours()).padStart(2, "0")}:${String(m.at.getMinutes()).padStart(2, "0")}`;
-  return `[${stamp}] ${m.author}: ${m.text}`;
+  const boundary = m.contextBreakBefore
+    ? `[다른 참여자의 메시지 ${m.contextBreakBefore}개 생략]\n`
+    : "";
+  return `${boundary}[${stamp}] ${m.author}: ${m.text}`;
 }
 
 function contextWindowIndexes(total: number, targetLines: number): number[] {

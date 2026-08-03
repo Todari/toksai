@@ -1,5 +1,6 @@
 import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import type { PrismaClient } from "@toksai/db";
+import type { AuthorAliasMap } from "@toksai/api";
 import {
   parseKakao, computeStats, bucketByMonth, renderBucketText, mapWithConcurrency,
 } from "@toksai/shared";
@@ -50,27 +51,42 @@ export class AnalysisRunnerService implements OnModuleInit {
       const people = {
         rawA: pa.rawName, rawB: pb.rawName,
         nickA: pa.nickname ?? pa.rawName, nickB: pb.nickname ?? pb.rawName,
+        mode: "direct" as "direct" | "group-focus",
       };
 
       const text = this.crypto.decrypt(analysis.rawChat.encryptedText);
-      const parsed = parseKakao(text, { allowNameChanges: true });
+      const parsed = parseKakao(text, { allowMultipleAuthors: true });
       const storedAuthorMap =
         analysis.authorAliasMap &&
         typeof analysis.authorAliasMap === "object" &&
         !Array.isArray(analysis.authorAliasMap)
-          ? (analysis.authorAliasMap as Record<string, string>)
+          ? (analysis.authorAliasMap as AuthorAliasMap)
           : Object.fromEntries(parsed.participants.map((participant) => [
               participant.rawName,
               participant.rawName,
             ]));
       const canonicalNames = new Set([people.rawA, people.rawB]);
-      const messages = parsed.messages.map((message) => {
+      people.mode = Object.values(storedAuthorMap).some((author) => author === null)
+        ? "group-focus"
+        : "direct";
+      const messages: Message[] = [];
+      let excludedSinceLastSelected = 0;
+      for (const message of parsed.messages) {
         const author = storedAuthorMap[message.author];
+        if (author === null) {
+          excludedSinceLastSelected += 1;
+          continue;
+        }
         if (!author || !canonicalNames.has(author)) {
           throw new Error("INVALID_AUTHOR_ALIAS_MAP");
         }
-        return { ...message, author };
-      });
+        messages.push({
+          ...message,
+          author,
+          contextBreakBefore: excludedSinceLastSelected || undefined,
+        });
+        excludedSinceLastSelected = 0;
+      }
       if (new Set(messages.map((message) => message.author)).size !== 2) {
         throw new Error("ANALYSIS_PARTICIPANTS_NOT_RESOLVED");
       }
@@ -301,9 +317,15 @@ export class AnalysisRunnerService implements OnModuleInit {
     };
   }
 
-  private summarizeStats(stats: ReturnType<typeof computeStats>, p: { rawA: string; rawB: string }): string {
+  private summarizeStats(
+    stats: ReturnType<typeof computeStats>,
+    p: { rawA: string; rawB: string; mode: "direct" | "group-focus" },
+  ): string {
     const a = stats.perPerson[p.rawA]; const b = stats.perPerson[p.rawB];
     return [
+      p.mode === "group-focus"
+        ? "단체방 관계 집중 모드이며, 제3자 발화 경계를 넘는 답장 추정은 제외했다."
+        : "1:1 대화 모드다.",
       `총 ${stats.totalMessages}개, 기간 ${stats.durationDays}일.`,
       `${p.rawA}: 메시지 ${a?.messageCount ?? 0}, 선톡 ${a?.initiationCount ?? 0}, 답장중앙값 ${a?.replyLatencyMedianSec ?? "-"}초.`,
       `${p.rawB}: 메시지 ${b?.messageCount ?? 0}, 선톡 ${b?.initiationCount ?? 0}, 답장중앙값 ${b?.replyLatencyMedianSec ?? "-"}초.`,

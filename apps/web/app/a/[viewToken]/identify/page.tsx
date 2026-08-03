@@ -6,12 +6,16 @@ import { trackEvent } from "../../../../lib/analytics";
 import {
   buildAliasResolution,
   canonicalNameForGroup,
+  excludedAliases,
   groupAliases,
   initializeAliasGroups,
+  initializeFocusGroups,
+  type AliasAssignment,
   type AliasGroupIndex,
 } from "../../../../lib/author-aliases";
 
 type P = { id: string; rawName: string; nickname: string | null };
+type AnalysisMode = "name-change" | "group-focus";
 
 const ACCENTS = [
   {
@@ -33,9 +37,10 @@ export default function Identify({ params }: { params: Promise<{ viewToken: stri
   const router = useRouter();
   const [adminToken, setAdminToken] = useState("");
   const [parts, setParts] = useState<P[]>([]);
-  const [suggestedMap, setSuggestedMap] = useState<Record<string, string>>({});
-  const [assignment, setAssignment] = useState<Record<string, AliasGroupIndex>>({});
+  const [suggestedMap, setSuggestedMap] = useState<Record<string, string | null>>({});
+  const [assignment, setAssignment] = useState<Record<string, AliasAssignment>>({});
   const [groupNames, setGroupNames] = useState<[string, string]>(["", ""]);
+  const [mode, setMode] = useState<AnalysisMode>("name-change");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -43,12 +48,26 @@ export default function Identify({ params }: { params: Promise<{ viewToken: stri
     setAdminToken(loadAdminToken(viewToken));
     trpc.analysis.get.query({ viewToken }).then((analysis) => {
       if (!analysis) return;
-      const initial = initializeAliasGroups(
-        analysis.participants,
-        analysis.authorAliasMap,
+      const participantByName = new Map(
+        analysis.participants.map((participant) => [participant.rawName, participant]),
       );
+      const candidates = analysis.detectedAuthorNames.map((rawName, index) => {
+        const participant = participantByName.get(rawName);
+        return participant ?? {
+          id: `detected-${index}`,
+          rawName,
+          nickname: null,
+          isOwner: false,
+        };
+      });
+      const savedGroupFocus = Object.values(analysis.authorAliasMap)
+        .some((canonical) => canonical === null);
+      const initial = savedGroupFocus
+        ? initializeFocusGroups(candidates, analysis.authorAliasMap)
+        : initializeAliasGroups(candidates, analysis.authorAliasMap);
 
-      setParts(analysis.participants);
+      setParts(candidates);
+      setMode(savedGroupFocus ? "group-focus" : "name-change");
       setSuggestedMap(initial.suggestedMap);
       setAssignment(initial.assignment);
       setGroupNames(initial.groupNames);
@@ -56,7 +75,9 @@ export default function Identify({ params }: { params: Promise<{ viewToken: stri
   }, [viewToken]);
 
   const groups = groupAliases(parts, assignment);
-  const hasNameChanges = parts.length > 2;
+  const excluded = excludedAliases(parts, assignment);
+  const hasMultipleNames = parts.length > 2;
+  const isGroupFocus = mode === "group-focus";
 
   function canonicalName(group: P[], index: AliasGroupIndex): string {
     return canonicalNameForGroup(group, index, suggestedMap);
@@ -65,12 +86,31 @@ export default function Identify({ params }: { params: Promise<{ viewToken: stri
   function moveAlias(rawName: string) {
     const from = assignment[rawName];
     if (from === undefined) return;
+    if (isGroupFocus) {
+      const next: AliasAssignment = from === null
+        ? groups[0].length === 0 ? 0 : groups[1].length === 0 ? 1 : 0
+        : from === 0 ? 1 : null;
+      setError("");
+      setAssignment({ ...assignment, [rawName]: next });
+      return;
+    }
+    if (from === null) return;
     if (groups[from].length <= 1) {
       setError("각 사람에게 이름이 하나 이상 있어야 해요.");
       return;
     }
     setError("");
     setAssignment({ ...assignment, [rawName]: from === 0 ? 1 : 0 });
+  }
+
+  function changeMode(nextMode: AnalysisMode) {
+    const initial = nextMode === "group-focus"
+      ? initializeFocusGroups(parts, suggestedMap)
+      : initializeAliasGroups(parts, suggestedMap);
+    setMode(nextMode);
+    setAssignment(initial.assignment);
+    setGroupNames(initial.groupNames);
+    setError("");
   }
 
   async function submit() {
@@ -97,7 +137,11 @@ export default function Identify({ params }: { params: Promise<{ viewToken: stri
         authorAliasMap,
       });
       await startAnalysis(adminToken);
-      trackEvent("analysis_started", { merged_aliases: parts.length - 2 });
+      trackEvent("analysis_started", {
+        analysis_mode: isGroupFocus ? "group_focus" : "direct",
+        merged_aliases: parts.length - excluded.length - 2,
+        excluded_authors: excluded.length,
+      });
       router.push(`/a/${viewToken}`);
     } catch {
       trackEvent("analysis_start_failed");
@@ -115,10 +159,17 @@ export default function Identify({ params }: { params: Promise<{ viewToken: stri
         <div className="text-center">
           <div className="text-4xl">💬</div>
           <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-neutral-800 dark:text-neutral-100">
-            {hasNameChanges ? "같은 사람의 이름을 묶어주세요" : "둘을 뭐라고 부를까요?"}
+            {isGroupFocus
+              ? "분석할 두 사람을 골라주세요"
+              : hasMultipleNames ? "같은 사람의 이름을 묶어주세요" : "둘을 뭐라고 부를까요?"}
           </h1>
           <p className="mt-2 text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
-            {hasNameChanges ? (
+            {isGroupFocus ? (
+              <>
+                단체방에서 궁금한 두 사람만 고르면,
+                <br />나머지 참여자의 말은 문맥 경계로만 반영해요.
+              </>
+            ) : hasMultipleNames ? (
               <>
                 표시 이름이 바뀐 흔적을 자동으로 묶어봤어요.
                 <br />잘못 묶였다면 이름을 눌러 옮겨주세요.
@@ -132,12 +183,49 @@ export default function Identify({ params }: { params: Promise<{ viewToken: stri
           </p>
         </div>
 
-        {hasNameChanges && (
+        {hasMultipleNames && (
+          <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl bg-neutral-100 p-1.5 dark:bg-neutral-800">
+            <button
+              type="button"
+              onClick={() => changeMode("name-change")}
+              className={`rounded-xl px-3 py-2.5 text-xs font-extrabold transition ${
+                !isGroupFocus
+                  ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-700 dark:text-white"
+                  : "text-neutral-500 dark:text-neutral-400"
+              }`}
+            >
+              1:1 · 이름 변경
+            </button>
+            <button
+              type="button"
+              onClick={() => changeMode("group-focus")}
+              className={`rounded-xl px-3 py-2.5 text-xs font-extrabold transition ${
+                isGroupFocus
+                  ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-700 dark:text-white"
+                  : "text-neutral-500 dark:text-neutral-400"
+              }`}
+            >
+              단체방 · 두 명 선택
+            </button>
+          </div>
+        )}
+
+        {hasMultipleNames && !isGroupFocus && (
           <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">
             <p className="font-extrabold">이름 변경이 맞는지 확인해주세요</p>
             <p className="mt-1">
-              같은 사람의 예전·현재 이름만 한쪽에 묶어야 정확해요. 실제 여러 사람이 참여한
-              단체방은 현재 지원하지 않아요.
+              같은 사람의 예전·현재 이름만 한쪽에 묶어야 정확해요. 실제 단체방이라면 위에서
+              ‘단체방 · 두 명 선택’을 눌러주세요.
+            </p>
+          </div>
+        )}
+
+        {isGroupFocus && (
+          <div className="mt-5 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs leading-relaxed text-sky-900 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-100">
+            <p className="font-extrabold">단체방 관계 집중 분석</p>
+            <p className="mt-1">
+              같은 방에 있었다는 사실만으로 호감을 판단하지 않아요. 두 사람의 직접적인
+              상호작용 근거가 부족하면 결과도 보수적으로 나와요.
             </p>
           </div>
         )}
@@ -179,19 +267,19 @@ export default function Identify({ params }: { params: Promise<{ viewToken: stri
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className={`text-[11px] font-extrabold ${accent.label}`}>
-                    사람 {groupIndex + 1} · 감지된 이름
+                    사람 {groupIndex + 1} · {isGroupFocus ? "선택한 이름" : "감지된 이름"}
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {group.map((participant) =>
-                      hasNameChanges ? (
+                      hasMultipleNames ? (
                         <button
                           key={participant.id}
                           type="button"
                           onClick={() => moveAlias(participant.rawName)}
                           className={`rounded-full border px-2.5 py-1 text-xs font-bold transition hover:-translate-y-0.5 ${accent.chip}`}
-                          aria-label={`${participant.rawName} 이름을 다른 사람으로 이동`}
+                          aria-label={`${participant.rawName} 이름을 다음 칸으로 이동`}
                         >
-                          {participant.rawName} ↔
+                          {participant.rawName} {isGroupFocus ? "→" : "↔"}
                         </button>
                       ) : (
                         <span
@@ -222,6 +310,29 @@ export default function Identify({ params }: { params: Promise<{ viewToken: stri
             );
           })}
         </div>
+
+        {isGroupFocus && (
+          <div className="mt-3 rounded-3xl border border-dashed border-neutral-300 bg-white/50 p-4 dark:border-neutral-700 dark:bg-neutral-900/40">
+            <div className="text-[11px] font-extrabold text-neutral-500 dark:text-neutral-400">
+              분석에서 제외 · 이름을 누르면 빈 사람 칸부터 들어가요
+            </div>
+            <div className="mt-2 flex min-h-8 flex-wrap gap-1.5">
+              {excluded.length > 0 ? excluded.map((participant) => (
+                <button
+                  key={participant.id}
+                  type="button"
+                  onClick={() => moveAlias(participant.rawName)}
+                  className="rounded-full border border-neutral-300 bg-white px-2.5 py-1 text-xs font-bold text-neutral-600 transition hover:-translate-y-0.5 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200"
+                  aria-label={`${participant.rawName} 이름을 분석 대상에 추가`}
+                >
+                  {participant.rawName} +
+                </button>
+              )) : (
+                <span className="text-xs text-neutral-400">모든 이름이 분석 대상에 들어가 있어요.</span>
+              )}
+            </div>
+          </div>
+        )}
 
         {error && <p className="mt-4 text-center text-sm text-rose-500">{error}</p>}
 

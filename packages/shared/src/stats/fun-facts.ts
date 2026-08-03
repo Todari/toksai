@@ -48,7 +48,7 @@ export function computeFunFacts(messages: Message[]): FunFacts {
       map.set(ch, (map.get(ch) ?? 0) + 1);
     }
 
-    if (i > 0) {
+    if (i > 0 && !msg.contextBreakBefore) {
       const gap = msg.at.getTime() - messages[i - 1].at.getTime();
       if (gap > maxGap) {
         maxGap = gap;
@@ -56,8 +56,9 @@ export function computeFunFacts(messages: Message[]): FunFacts {
       }
     }
 
-    const nextGap = i < messages.length - 1 ? messages[i + 1].at.getTime() - msg.at.getTime() : Infinity;
-    if (nextGap >= GAP_MS) {
+    const next = messages[i + 1];
+    const nextGap = next ? next.at.getTime() - msg.at.getTime() : Infinity;
+    if (!next?.contextBreakBefore && nextGap >= GAP_MS) {
       conversationEnder[msg.author] = (conversationEnder[msg.author] ?? 0) + 1;
     }
   }

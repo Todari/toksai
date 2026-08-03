@@ -1,4 +1,7 @@
+import type { AuthorAliasMap } from "@toksai/api";
+
 export type AliasGroupIndex = 0 | 1;
+export type AliasAssignment = AliasGroupIndex | null;
 
 export interface AliasParticipant {
   rawName: string;
@@ -6,14 +9,14 @@ export interface AliasParticipant {
 }
 
 export interface InitialAliasGroups {
-  suggestedMap: Record<string, string>;
-  assignment: Record<string, AliasGroupIndex>;
+  suggestedMap: AuthorAliasMap;
+  assignment: Record<string, AliasAssignment>;
   groupNames: [string, string];
 }
 
 export function initializeAliasGroups(
   participants: AliasParticipant[],
-  suggested?: Record<string, string>,
+  suggested?: AuthorAliasMap,
 ): InitialAliasGroups {
   const rawNames = participants.map((participant) => participant.rawName);
   const suggestedMap =
@@ -25,11 +28,14 @@ export function initializeAliasGroups(
   }
   const validSuggestion =
     canonicalOrder.length === 2 &&
-    rawNames.every((rawName) => rawNames.includes(suggestedMap[rawName]));
-  const assignment: Record<string, AliasGroupIndex> = {};
+    rawNames.every((rawName) => {
+      const canonical = suggestedMap[rawName];
+      return typeof canonical === "string" && rawNames.includes(canonical);
+    });
+  const assignment: Record<string, AliasAssignment> = {};
   rawNames.forEach((rawName, index) => {
     assignment[rawName] = validSuggestion
-      ? (canonicalOrder.indexOf(suggestedMap[rawName]) as AliasGroupIndex)
+      ? (canonicalOrder.indexOf(suggestedMap[rawName] as string) as AliasGroupIndex)
       : index === 0 ? 0 : 1;
   });
   const canonicalNames = validSuggestion
@@ -45,9 +51,51 @@ export function initializeAliasGroups(
   };
 }
 
+export function initializeFocusGroups(
+  participants: AliasParticipant[],
+  suggested?: AuthorAliasMap,
+): InitialAliasGroups {
+  const rawNames = participants.map((participant) => participant.rawName);
+  const suggestedMap =
+    suggested ?? Object.fromEntries(rawNames.map((rawName) => [rawName, rawName]));
+  const canonicalOrder: string[] = [];
+  for (const rawName of rawNames) {
+    const canonical = suggestedMap[rawName];
+    if (typeof canonical === "string" && !canonicalOrder.includes(canonical)) {
+      canonicalOrder.push(canonical);
+    }
+  }
+  const hasSavedSelection =
+    rawNames.some((rawName) => suggestedMap[rawName] === null) &&
+    canonicalOrder.length === 2 &&
+    rawNames.every((rawName) => {
+      const canonical = suggestedMap[rawName];
+      return canonical === null || (
+        typeof canonical === "string" && rawNames.includes(canonical)
+      );
+    });
+  const nicknameOf = (rawName: string) =>
+    participants.find((participant) => participant.rawName === rawName)?.nickname ?? rawName;
+  return {
+    suggestedMap,
+    assignment: Object.fromEntries(rawNames.map((rawName) => {
+      const canonical = suggestedMap[rawName];
+      return [
+        rawName,
+        hasSavedSelection && typeof canonical === "string"
+          ? canonicalOrder.indexOf(canonical) as AliasGroupIndex
+          : null,
+      ];
+    })),
+    groupNames: hasSavedSelection
+      ? [nicknameOf(canonicalOrder[0]), nicknameOf(canonicalOrder[1])]
+      : ["", ""],
+  };
+}
+
 export function groupAliases<T extends { rawName: string }>(
   participants: T[],
-  assignment: Record<string, AliasGroupIndex>,
+  assignment: Record<string, AliasAssignment>,
 ): [T[], T[]] {
   return [
     participants.filter((participant) => assignment[participant.rawName] === 0),
@@ -55,10 +103,17 @@ export function groupAliases<T extends { rawName: string }>(
   ];
 }
 
+export function excludedAliases<T extends { rawName: string }>(
+  participants: T[],
+  assignment: Record<string, AliasAssignment>,
+): T[] {
+  return participants.filter((participant) => assignment[participant.rawName] === null);
+}
+
 export function canonicalNameForGroup<T extends { rawName: string }>(
   group: T[],
   index: AliasGroupIndex,
-  suggestedMap: Record<string, string>,
+  suggestedMap: AuthorAliasMap,
 ): string {
   const suggestedCanonical = group.find(
     (participant) => suggestedMap[participant.rawName] === participant.rawName,
@@ -68,10 +123,10 @@ export function canonicalNameForGroup<T extends { rawName: string }>(
 
 export function buildAliasResolution<T extends { rawName: string }>(
   participants: T[],
-  assignment: Record<string, AliasGroupIndex>,
+  assignment: Record<string, AliasAssignment>,
   groupNames: [string, string],
-  suggestedMap: Record<string, string>,
-): { authorAliasMap: Record<string, string>; nicknames: Record<string, string> } {
+  suggestedMap: AuthorAliasMap,
+): { authorAliasMap: AuthorAliasMap; nicknames: Record<string, string> } {
   const groups = groupAliases(participants, assignment);
   if (groups.some((group) => group.length === 0)) {
     throw new Error("EMPTY_ALIAS_GROUP");
@@ -79,7 +134,9 @@ export function buildAliasResolution<T extends { rawName: string }>(
   const canonicalNames = groups.map((group, index) =>
     canonicalNameForGroup(group, index as AliasGroupIndex, suggestedMap),
   );
-  const authorAliasMap: Record<string, string> = {};
+  const authorAliasMap: AuthorAliasMap = Object.fromEntries(
+    participants.map((participant) => [participant.rawName, null]),
+  );
   groups.forEach((group, index) => {
     for (const participant of group) {
       authorAliasMap[participant.rawName] = canonicalNames[index];

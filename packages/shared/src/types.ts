@@ -2,6 +2,8 @@ export interface Message {
   author: string;
   at: Date;
   text: string;
+  /** 관계 집중 모드에서 이 메시지 앞에 생략된 제3자 발화 수. */
+  contextBreakBefore?: number;
 }
 
 export interface ParticipantInfo {

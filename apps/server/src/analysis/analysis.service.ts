@@ -1,6 +1,11 @@
 import { Injectable } from "@nestjs/common";
 import type { PrismaClient } from "@toksai/db";
-import type { AnalysisContract, AnalysisResultView, AnalysisView } from "@toksai/api";
+import type {
+  AnalysisContract,
+  AnalysisResultView,
+  AnalysisView,
+  AuthorAliasMap,
+} from "@toksai/api";
 import { MAX_ANALYSIS_MONTHS, MAX_CHAT_MESSAGES, ParseError, parseKakao } from "@toksai/shared";
 import { FileExtractService } from "../upload/file-extract.service";
 import { CryptoService } from "../common/crypto/crypto.service";
@@ -11,11 +16,14 @@ import { RateLimitService } from "../common/rate-limit.service";
 const STALE_JOB_MS = 3 * 60 * 1000;
 const MAX_ANALYSIS_ATTEMPTS = 3;
 
-function toAuthorMap(value: unknown, fallbackNames: string[]): Record<string, string> {
+function toAuthorMap(value: unknown, fallbackNames: string[]): AuthorAliasMap {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const entries = Object.entries(value);
-    if (entries.length > 0 && entries.every((entry) => typeof entry[1] === "string")) {
-      return Object.fromEntries(entries) as Record<string, string>;
+    if (
+      entries.length > 0 &&
+      entries.every((entry) => typeof entry[1] === "string" || entry[1] === null)
+    ) {
+      return Object.fromEntries(entries) as AuthorAliasMap;
     }
   }
   return Object.fromEntries(fallbackNames.map((name) => [name, name]));
@@ -37,7 +45,7 @@ export class AnalysisService implements AnalysisContract {
 
   async createFromFile(buffer: Buffer, filename: string, sourceType: "upload" | "email") {
     const text = this.extractor.extractChatText(buffer, filename);
-    const parsed = parseKakao(text, { allowNameChanges: true });
+    const parsed = parseKakao(text, { allowMultipleAuthors: true });
     if (parsed.messages.length > MAX_CHAT_MESSAGES) {
       throw new ParseError(
         "CHAT_TOO_LARGE",
@@ -87,6 +95,10 @@ export class AnalysisService implements AnalysisContract {
       include: { participants: true },
     });
     if (!a) return null;
+    const authorAliasMap = toAuthorMap(
+      a.authorAliasMap,
+      a.participants.map((participant) => participant.rawName),
+    );
     return {
       id: a.id,
       status: a.status,
@@ -94,10 +106,8 @@ export class AnalysisService implements AnalysisContract {
       participants: a.participants.map((p) => ({
         id: p.id, rawName: p.rawName, nickname: p.nickname, isOwner: p.isOwner,
       })),
-      authorAliasMap: toAuthorMap(
-        a.authorAliasMap,
-        a.participants.map((participant) => participant.rawName),
-      ),
+      detectedAuthorNames: Object.keys(authorAliasMap),
+      authorAliasMap,
     };
   }
 
@@ -105,7 +115,7 @@ export class AnalysisService implements AnalysisContract {
     adminToken: string,
     ownerRawName: string,
     nicknames: Record<string, string>,
-    authorAliasMap?: Record<string, string>,
+    authorAliasMap?: AuthorAliasMap,
   ): Promise<void> {
     const a = await this.prisma.analysis.findUnique({
       where: { adminToken },
@@ -113,7 +123,12 @@ export class AnalysisService implements AnalysisContract {
     });
     if (!a) throw new Error("NOT_FOUND");
 
-    const detectedNames = a.participants.map((participant) => participant.rawName);
+    const detectedNames = Object.keys(
+      toAuthorMap(
+        a.authorAliasMap,
+        a.participants.map((participant) => participant.rawName),
+      ),
+    );
     const resolvedMap =
       authorAliasMap ?? Object.fromEntries(detectedNames.map((name) => [name, name]));
     const providedNames = Object.keys(resolvedMap);
@@ -123,12 +138,16 @@ export class AnalysisService implements AnalysisContract {
     const canonicalNames: string[] = [];
     for (const detectedName of detectedNames) {
       const canonical = resolvedMap[detectedName];
+      if (canonical === null) continue;
       if (!detectedNames.includes(canonical)) {
         throw new Error("INVALID_AUTHOR_ALIAS_MAP");
       }
       if (!canonicalNames.includes(canonical)) canonicalNames.push(canonical);
     }
-    if (!exactAliases || canonicalNames.length !== 2) {
+    const canonicalNamesAreStable = canonicalNames.every(
+      (canonical) => resolvedMap[canonical] === canonical,
+    );
+    if (!exactAliases || canonicalNames.length !== 2 || !canonicalNamesAreStable) {
       throw new Error("INVALID_AUTHOR_ALIAS_MAP");
     }
 

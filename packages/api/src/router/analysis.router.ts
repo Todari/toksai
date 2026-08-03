@@ -11,7 +11,9 @@ export const analysisRouter = router({
         adminToken: z.string(),
         ownerRawName: z.string(),
         nicknames: z.record(z.string().max(100), z.string().max(20)),
-        authorAliasMap: z.record(z.string().max(100), z.string().max(100)).optional(),
+        authorAliasMap: z
+          .record(z.string().max(100), z.string().max(100).nullable())
+          .optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {

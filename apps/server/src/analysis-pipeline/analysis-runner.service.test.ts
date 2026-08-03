@@ -170,6 +170,41 @@ describe("AnalysisRunnerService.run", () => {
     expect(saved.stats.totalMessages).toBe(4);
   });
 
+  it("단체방의 제외 참여자를 통계에서 빼고 AI 입력에는 문맥 경계만 남긴다", async () => {
+    const groupRaw = `2025. 1. 1. 오후 1:00, 김승현 : 오늘 뭐해?
+2025. 1. 1. 오후 1:01, 제3자 : 다들 점심 먹었어?
+2025. 1. 1. 오후 1:02, 곽민성 : 나는 먹었어
+2025. 1. 1. 오후 1:03, 김승현 : 난 아직
+2025. 1. 1. 오후 1:04, 제3자 : 메뉴 추천해줘
+2025. 1. 1. 오후 1:05, 곽민성 : 국밥 어때`;
+    const crypto = new CryptoService(randomBytes(32).toString("base64"));
+    const prisma = makePrisma(crypto.encrypt(groupRaw));
+    prisma._store.analysis.authorAliasMap = {
+      김승현: "김승현",
+      곽민성: "곽민성",
+      제3자: null,
+    };
+    let bucketPrompt = "";
+    const fake = new FakeLlmClient([
+      (request) => {
+        bucketPrompt = request.prompt;
+        return bucketReturn("2025-01")();
+      },
+      synthesisReturn,
+    ]);
+    const runner = new AnalysisRunnerService(prisma, crypto, fake);
+
+    await runner.run("a1");
+
+    const saved = prisma.analysisResult.upsert.mock.calls[0][0].create;
+    expect(saved.stats.totalMessages).toBe(4);
+    expect(saved.stats.perPerson["제3자"]).toBeUndefined();
+    expect(saved.stats.perPerson["곽민성"].replyLatencyMedianSec).toBeNull();
+    expect(bucketPrompt).toContain("[다른 참여자의 메시지 1개 생략]");
+    expect(bucketPrompt).toContain("직접 답장으로 단정하지 않는다");
+    expect(bucketPrompt).not.toContain("다들 점심 먹었어?");
+  });
+
   it("솔직 하이라이트 종류(banter/awkward/clash)도 스키마를 통과해 저장된다", async () => {
     const crypto = new CryptoService(randomBytes(32).toString("base64"));
     const prisma = makePrisma(crypto.encrypt(RAW));

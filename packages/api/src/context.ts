@@ -8,12 +8,15 @@ export interface ParticipantView {
   isOwner: boolean;
 }
 
+export type AuthorAliasMap = Record<string, string | null>;
+
 export interface AnalysisView {
   id: string;
   status: string;
   createdAt: Date;
   participants: ParticipantView[];
-  authorAliasMap: Record<string, string>;
+  detectedAuthorNames: string[];
+  authorAliasMap: AuthorAliasMap;
 }
 
 export interface AnalysisContract {
@@ -22,7 +25,7 @@ export interface AnalysisContract {
     adminToken: string,
     ownerRawName: string,
     nicknames: Record<string, string>,
-    authorAliasMap?: Record<string, string>,
+    authorAliasMap?: AuthorAliasMap,
   ): Promise<void>;
   start(adminToken: string, clientId?: string): Promise<{ ok: true }>;
   getResult(viewToken: string): Promise<AnalysisResultView | null>;

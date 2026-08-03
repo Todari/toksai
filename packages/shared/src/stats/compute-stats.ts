@@ -54,7 +54,7 @@ export function computeStats(messages: Message[]): ChatStats {
     const gap = i === 0 ? Infinity : msg.at.getTime() - messages[i - 1].at.getTime();
     if (i === 0 || gap >= GAP_MS) {
       p.initiationCount++;
-    } else if (messages[i - 1].author !== msg.author) {
+    } else if (!msg.contextBreakBefore && messages[i - 1].author !== msg.author) {
       latency[msg.author].push(gap / 1000);
     }
 

@@ -35,7 +35,7 @@ export interface KakaoParser {
 }
 
 export interface ParseKakaoOptions {
-  allowNameChanges?: boolean;
+  allowMultipleAuthors?: boolean;
 }
 
 export class IosKakaoParser implements KakaoParser {
@@ -180,30 +180,27 @@ function suggestAuthorMap(messages: Message[], order: string[]): Record<string, 
     transitionWeights[b][a] += 1;
   }
 
-  // 첫 이름을 0번 그룹에 고정하고 가능한 2분할을 모두 비교한다.
-  // 실제 두 사람 사이에서 오간 짧은 답장 전환이 최대한 그룹 사이에 놓이는 분할을 고른다.
-  let bestMask = 1;
-  let bestScore = -1;
-  const partitionCount = 1 << (order.length - 1);
-  for (let mask = 1; mask < partitionCount; mask++) {
-    let score = 0;
-    for (let a = 0; a < order.length; a++) {
-      const groupA = a === 0 ? 0 : (mask >> (a - 1)) & 1;
-      for (let b = a + 1; b < order.length; b++) {
-        const groupB = b === 0 ? 0 : (mask >> (b - 1)) & 1;
-        if (groupA !== groupB) score += transitionWeights[a][b];
-      }
+  // 이름 수가 많은 단체방도 지수 시간 없이 처리하도록 탐욕적으로 2분할한다.
+  // 실제 1:1 이름 변경에서는 짧은 화자 전환이 그룹 사이에 최대한 놓여
+  // 예전·현재 이름이 같은 쪽에 모인다. 단체방이면 UI에서 사용자가 두 대상을 다시 고른다.
+  const groups = [[order[0]], []] as string[][];
+  const assignedGroup = new Map<string, 0 | 1>([[order[0], 0]]);
+  for (let i = 1; i < order.length; i++) {
+    let crossIfZero = 0;
+    let crossIfOne = 0;
+    for (let j = 0; j < i; j++) {
+      const assigned = assignedGroup.get(order[j]) ?? 0;
+      if (assigned === 1) crossIfZero += transitionWeights[i][j];
+      else crossIfOne += transitionWeights[i][j];
     }
-    if (score > bestScore) {
-      bestScore = score;
-      bestMask = mask;
-    }
-  }
-
-  const groups = [[], []] as string[][];
-  for (let i = 0; i < order.length; i++) {
-    const group = i === 0 ? 0 : ((bestMask >> (i - 1)) & 1);
+    const group: 0 | 1 =
+      crossIfOne > crossIfZero
+        ? 1
+        : crossIfZero > crossIfOne
+          ? 0
+          : groups[0].length <= groups[1].length ? 0 : 1;
     groups[group].push(order[i]);
+    assignedGroup.set(order[i], group);
   }
 
   const activity = new Map<string, { lastAt: number; count: number; order: number }>();
@@ -240,15 +237,17 @@ function finalize(messages: Message[], options?: ParseKakaoOptions): ParsedChat 
     if (!counts.has(msg.author)) order.push(msg.author);
     counts.set(msg.author, (counts.get(msg.author) ?? 0) + 1);
   }
-  const allowNameChanges = options?.allowNameChanges === true;
-  if (
-    order.length < 2 ||
-    (!allowNameChanges && order.length !== 2) ||
-    order.length > MAX_AUTHOR_ALIASES
-  ) {
+  const allowMultipleAuthors = options?.allowMultipleAuthors === true;
+  if (order.length < 2 || (!allowMultipleAuthors && order.length !== 2)) {
     throw new ParseError(
       "NOT_ONE_TO_ONE",
       `1:1 대화만 지원합니다 (감지된 화자 ${order.length}명).`,
+    );
+  }
+  if (order.length > MAX_AUTHOR_ALIASES) {
+    throw new ParseError(
+      "NOT_ONE_TO_ONE",
+      `감지된 이름이 너무 많아요. ${MAX_AUTHOR_ALIASES}명 이하 대화를 올려주세요.`,
     );
   }
   return {

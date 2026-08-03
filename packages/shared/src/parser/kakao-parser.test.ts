@@ -102,7 +102,7 @@ describe("parseKakao (iOS)", () => {
 2025. 2. 1. 오후 1:02, B : 잘 지냈어?
 2025. 2. 1. 오후 1:03, 나 : 응`;
 
-    const result = parseKakao(raw, { allowNameChanges: true });
+    const result = parseKakao(raw, { allowMultipleAuthors: true });
 
     expect(result.participants.map((participant) => participant.rawName)).toEqual(["A", "나", "B"]);
     expect(result.suggestedAuthorMap).toEqual({ A: "B", B: "B", 나: "나" });
@@ -110,15 +110,26 @@ describe("parseKakao (iOS)", () => {
 
   it("이름 변경 모드도 실제 인물 그룹을 두 개로 만들 수 없는 한 명 대화는 거절한다", () => {
     const raw = `2025. 1. 1. 오후 1:00, A : 혼잣말`;
-    expect(() => parseKakao(raw, { allowNameChanges: true })).toThrowError(ParseError);
+    expect(() => parseKakao(raw, { allowMultipleAuthors: true })).toThrowError(ParseError);
   });
 
-  it("감지된 이름이 안전 상한을 넘으면 단체방으로 보고 거절한다", () => {
+  it("30명까지 있는 단체방을 관계 집중 대상으로 파싱한다", () => {
     const raw = Array.from(
-      { length: 9 },
-      (_, index) => `2025. 1. 1. 오후 1:0${index}, 이름${index + 1} : 메시지`,
+      { length: 30 },
+      (_, index) => `2025. 1. 1. 13:${String(index).padStart(2, "0")}, 이름${index + 1} : 메시지`,
     ).join("\n");
-    expect(() => parseKakao(raw, { allowNameChanges: true })).toThrowError(ParseError);
+
+    const result = parseKakao(raw, { allowMultipleAuthors: true });
+
+    expect(result.participants).toHaveLength(30);
+  });
+
+  it("감지된 이름이 안전 상한을 넘으면 거절한다", () => {
+    const raw = Array.from(
+      { length: 31 },
+      (_, index) => `2025. 1. 1. 13:${String(index).padStart(2, "0")}, 이름${index + 1} : 메시지`,
+    ).join("\n");
+    expect(() => parseKakao(raw, { allowMultipleAuthors: true })).toThrowError(ParseError);
   });
 
   it("메시지가 없으면 NO_MESSAGES", () => {

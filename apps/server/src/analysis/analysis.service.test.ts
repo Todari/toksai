@@ -118,6 +118,43 @@ describe("AnalysisService.identify", () => {
     ]);
   });
 
+  it("단체방에서 선택하지 않은 참여자는 null로 제외하고 두 사람만 남긴다", async () => {
+    const prisma = {
+      analysis: {
+        findUnique: vi.fn(async () => ({
+          id: "a1",
+          authorAliasMap: { A: "A", B: "B", C: "C" },
+          participants: [
+            { id: "p1", rawName: "A" },
+            { id: "p2", rawName: "B" },
+            { id: "p3", rawName: "C" },
+          ],
+        })),
+        update: vi.fn(async ({ data }: any) => data),
+      },
+    } as any;
+    const svc = new AnalysisService(
+      prisma,
+      new FileExtractService(),
+      new CryptoService(randomBytes(32).toString("base64")),
+      { run: async () => {} } as any,
+    );
+
+    await svc.identify(
+      "admin",
+      "",
+      { A: "에이", B: "비" },
+      { A: "A", B: "B", C: null },
+    );
+
+    const data = prisma.analysis.update.mock.calls[0][0].data;
+    expect(data.authorAliasMap).toEqual({ A: "A", B: "B", C: null });
+    expect(data.participants.create).toEqual([
+      { rawName: "A", nickname: "에이", isOwner: false },
+      { rawName: "B", nickname: "비", isOwner: false },
+    ]);
+  });
+
   it("모든 원본 이름을 두 사람에게 정확히 배정하지 않으면 거절한다", async () => {
     const prisma = {
       analysis: {

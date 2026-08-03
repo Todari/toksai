@@ -45,6 +45,17 @@ describe("computeStats", () => {
     expect(s.perPerson["A"].replyLatencyMedianSec).toBe(40); // A도 화자전환 후 응답 표본 1개(40s)
   });
 
+  it("제3자 발화 경계를 건너뛴 화자 전환은 답장으로 세지 않는다", () => {
+    const msgs: Message[] = [
+      m("A", "2025-01-01T10:00:00", "단체방 질문"),
+      { ...m("B", "2025-01-01T10:02:00", "다른 얘기"), contextBreakBefore: 2 },
+    ];
+
+    const s = computeStats(msgs);
+
+    expect(s.perPerson["B"].replyLatencyMedianSec).toBeNull();
+  });
+
   it("이모지/ㅋㅎ/물음표를 센다", () => {
     const msgs: Message[] = [
       m("A", "2025-01-01T10:00:00", "좋아😀😀 ㅋㅋㅋ 진짜?!"),

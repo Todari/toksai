@@ -20,7 +20,7 @@ export function emailIntakeErrorMessage(code: string): string {
     EMAIL_FILE_TOO_LARGE: "첨부파일이 너무 커요. 20MB 이하 파일로 다시 보내주세요.",
     CHAT_TOO_LARGE: "메시지가 너무 많아요. 더 짧은 기간으로 내보내 다시 보내주세요.",
     CHAT_TOO_LONG: "대화 기간이 너무 길어요. 최근 대화만 내보내 다시 보내주세요.",
-    NOT_ONE_TO_ONE: "현재는 두 사람이 나눈 1:1 대화만 분석할 수 있어요.",
+    NOT_ONE_TO_ONE: "분석할 사람이 두 명 이상 있고, 감지된 이름이 30개 이하인 대화를 보내주세요.",
     NO_MESSAGES: "카카오톡 대화 메시지를 찾지 못했어요. 대화 내용 내보내기 파일인지 확인해주세요.",
     UNSUPPORTED_FORMAT: "카카오톡 대화 형식을 읽지 못했어요.",
   };

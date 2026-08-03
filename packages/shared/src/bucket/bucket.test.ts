@@ -31,6 +31,16 @@ describe("renderBucketText", () => {
     );
   });
 
+  it("단체방에서 제외한 참여자 발화를 문맥 경계로 표시한다", () => {
+    const focused = {
+      ...m("B", "2025-01-01T10:01:00", "하이"),
+      contextBreakBefore: 3,
+    };
+    const b = bucketByMonth([m("A", "2025-01-01T10:00:00", "안녕"), focused])[0];
+
+    expect(renderBucketText(b)).toContain("[다른 참여자의 메시지 3개 생략]");
+  });
+
   it("maxChars 초과 시 앞뒤를 보존하며 잘라낸다", () => {
     const many: Message[] = Array.from({ length: 500 }, (_, i) =>
       m(i % 2 ? "A" : "B", `2025-01-01T10:00:${String(i % 60).padStart(2, "0")}`, `msg${i}`));
