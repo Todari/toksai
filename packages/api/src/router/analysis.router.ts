@@ -10,11 +10,17 @@ export const analysisRouter = router({
       z.object({
         adminToken: z.string(),
         ownerRawName: z.string(),
-        nicknames: z.record(z.string(), z.string()),
+        nicknames: z.record(z.string().max(100), z.string().max(20)),
+        authorAliasMap: z.record(z.string().max(100), z.string().max(100)).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      await ctx.analysis.identify(input.adminToken, input.ownerRawName, input.nicknames);
+      await ctx.analysis.identify(
+        input.adminToken,
+        input.ownerRawName,
+        input.nicknames,
+        input.authorAliasMap,
+      );
       return { ok: true as const };
     }),
   start: publicProcedure

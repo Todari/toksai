@@ -126,6 +126,50 @@ describe("AnalysisRunnerService.run", () => {
     ]);
   });
 
+  it("예전·현재 표시 이름을 확인된 두 사람으로 합친 뒤 통계와 AI 입력을 만든다", async () => {
+    const renamedRaw = `2025. 1. 1. 오후 1:00, A : 안녕
+2025. 1. 1. 오후 1:01, 나 : 하이
+2025. 1. 1. 오후 1:02, B : 이름 바꿨어
+2025. 1. 1. 오후 1:03, 나 : 확인`;
+    const crypto = new CryptoService(randomBytes(32).toString("base64"));
+    const prisma = makePrisma(crypto.encrypt(renamedRaw));
+    prisma._store.analysis.authorAliasMap = { A: "B", B: "B", 나: "나" };
+    prisma._store.analysis.participants = [
+      { rawName: "B", nickname: "상대", isOwner: false },
+      { rawName: "나", nickname: "나", isOwner: false },
+    ];
+    const aliasBucket = () => ({
+      month: "2025-01",
+      events: [],
+      affinity: [
+        { from: "B", to: "나", score: 60, reason: "r" },
+        { from: "나", to: "B", score: 55, reason: "r" },
+      ],
+      keywords: [],
+      highlights: [],
+    });
+    const aliasSynthesis = () => ({
+      ...synthesisReturn(),
+      personas: [
+        { rawName: "B", oneLiner: "상대" },
+        { rawName: "나", oneLiner: "나" },
+      ],
+      badges: [],
+    });
+    const runner = new AnalysisRunnerService(
+      prisma,
+      crypto,
+      new FakeLlmClient([aliasBucket, aliasSynthesis]),
+    );
+
+    await runner.run("a1");
+
+    const saved = prisma.analysisResult.upsert.mock.calls[0][0].create;
+    expect(Object.keys(saved.stats.perPerson).sort()).toEqual(["B", "나"].sort());
+    expect(saved.stats.perPerson.B.messageCount).toBe(2);
+    expect(saved.stats.totalMessages).toBe(4);
+  });
+
   it("솔직 하이라이트 종류(banter/awkward/clash)도 스키마를 통과해 저장된다", async () => {
     const crypto = new CryptoService(randomBytes(32).toString("base64"));
     const prisma = makePrisma(crypto.encrypt(RAW));

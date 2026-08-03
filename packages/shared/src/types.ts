@@ -12,6 +12,7 @@ export interface ParticipantInfo {
 export interface ParsedChat {
   messages: Message[];
   participants: ParticipantInfo[];
+  suggestedAuthorMap: Record<string, string>;
   startedAt: Date;
   endedAt: Date;
 }

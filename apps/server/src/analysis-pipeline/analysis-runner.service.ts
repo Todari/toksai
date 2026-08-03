@@ -44,15 +44,39 @@ export class AnalysisRunnerService implements OnModuleInit {
       if (!analysis || !analysis.rawChat) throw new Error("ANALYSIS_NOT_READY");
 
       const [pa, pb] = analysis.participants;
+      if (!pa || !pb || analysis.participants.length !== 2) {
+        throw new Error("ANALYSIS_PARTICIPANTS_NOT_RESOLVED");
+      }
       const people = {
         rawA: pa.rawName, rawB: pb.rawName,
         nickA: pa.nickname ?? pa.rawName, nickB: pb.nickname ?? pb.rawName,
       };
 
       const text = this.crypto.decrypt(analysis.rawChat.encryptedText);
-      const parsed = parseKakao(text);
-      const stats = computeStats(parsed.messages);
-      const buckets = bucketByMonth(parsed.messages);
+      const parsed = parseKakao(text, { allowNameChanges: true });
+      const storedAuthorMap =
+        analysis.authorAliasMap &&
+        typeof analysis.authorAliasMap === "object" &&
+        !Array.isArray(analysis.authorAliasMap)
+          ? (analysis.authorAliasMap as Record<string, string>)
+          : Object.fromEntries(parsed.participants.map((participant) => [
+              participant.rawName,
+              participant.rawName,
+            ]));
+      const canonicalNames = new Set([people.rawA, people.rawB]);
+      const messages = parsed.messages.map((message) => {
+        const author = storedAuthorMap[message.author];
+        if (!author || !canonicalNames.has(author)) {
+          throw new Error("INVALID_AUTHOR_ALIAS_MAP");
+        }
+        return { ...message, author };
+      });
+      if (new Set(messages.map((message) => message.author)).size !== 2) {
+        throw new Error("ANALYSIS_PARTICIPANTS_NOT_RESOLVED");
+      }
+
+      const stats = computeStats(messages);
+      const buckets = bucketByMonth(messages);
       let ungroundedQuotesRemoved = 0;
 
       const bucketResults = (await mapWithConcurrency(buckets, BUCKET_CONCURRENCY, async (b) => {
@@ -129,7 +153,7 @@ export class AnalysisRunnerService implements OnModuleInit {
         return { month: b.month, scores };
       });
 
-      const groundedSynthesis = this.groundSynthesisQuotes(normalizedSynthesis, parsed.messages);
+      const groundedSynthesis = this.groundSynthesisQuotes(normalizedSynthesis, messages);
       ungroundedQuotesRemoved += groundedSynthesis.removed;
       const result: AnalysisResultView = {
         stats,

@@ -11,6 +11,16 @@ import { RateLimitService } from "../common/rate-limit.service";
 const STALE_JOB_MS = 3 * 60 * 1000;
 const MAX_ANALYSIS_ATTEMPTS = 3;
 
+function toAuthorMap(value: unknown, fallbackNames: string[]): Record<string, string> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const entries = Object.entries(value);
+    if (entries.length > 0 && entries.every((entry) => typeof entry[1] === "string")) {
+      return Object.fromEntries(entries) as Record<string, string>;
+    }
+  }
+  return Object.fromEntries(fallbackNames.map((name) => [name, name]));
+}
+
 @Injectable()
 export class AnalysisService implements AnalysisContract {
   constructor(
@@ -27,7 +37,7 @@ export class AnalysisService implements AnalysisContract {
 
   async createFromFile(buffer: Buffer, filename: string, sourceType: "upload" | "email") {
     const text = this.extractor.extractChatText(buffer, filename);
-    const parsed = parseKakao(text); // 1:1 아니면 ParseError
+    const parsed = parseKakao(text, { allowNameChanges: true });
     if (parsed.messages.length > MAX_CHAT_MESSAGES) {
       throw new ParseError(
         "CHAT_TOO_LARGE",
@@ -53,6 +63,7 @@ export class AnalysisService implements AnalysisContract {
         adminToken,
         status: "IDENTIFYING",
         sourceType,
+        authorAliasMap: parsed.suggestedAuthorMap,
         participants: {
           create: parsed.participants.map((p) => ({ rawName: p.rawName })),
         },
@@ -83,6 +94,10 @@ export class AnalysisService implements AnalysisContract {
       participants: a.participants.map((p) => ({
         id: p.id, rawName: p.rawName, nickname: p.nickname, isOwner: p.isOwner,
       })),
+      authorAliasMap: toAuthorMap(
+        a.authorAliasMap,
+        a.participants.map((participant) => participant.rawName),
+      ),
     };
   }
 
@@ -90,27 +105,58 @@ export class AnalysisService implements AnalysisContract {
     adminToken: string,
     ownerRawName: string,
     nicknames: Record<string, string>,
+    authorAliasMap?: Record<string, string>,
   ): Promise<void> {
     const a = await this.prisma.analysis.findUnique({
       where: { adminToken },
       include: { participants: true },
     });
     if (!a) throw new Error("NOT_FOUND");
-    for (const p of a.participants) {
-      await this.prisma.participant.update({
-        where: { id: p.id },
-        data: {
-          isOwner: p.rawName === ownerRawName,
-          nickname: nicknames[p.rawName] ?? p.nickname,
-        },
-      });
+
+    const detectedNames = a.participants.map((participant) => participant.rawName);
+    const resolvedMap =
+      authorAliasMap ?? Object.fromEntries(detectedNames.map((name) => [name, name]));
+    const providedNames = Object.keys(resolvedMap);
+    const exactAliases =
+      providedNames.length === detectedNames.length &&
+      detectedNames.every((name) => providedNames.includes(name));
+    const canonicalNames: string[] = [];
+    for (const detectedName of detectedNames) {
+      const canonical = resolvedMap[detectedName];
+      if (!detectedNames.includes(canonical)) {
+        throw new Error("INVALID_AUTHOR_ALIAS_MAP");
+      }
+      if (!canonicalNames.includes(canonical)) canonicalNames.push(canonical);
     }
+    if (!exactAliases || canonicalNames.length !== 2) {
+      throw new Error("INVALID_AUTHOR_ALIAS_MAP");
+    }
+
+    const ownerCanonical = resolvedMap[ownerRawName] ?? "";
+    await this.prisma.analysis.update({
+      where: { id: a.id },
+      data: {
+        authorAliasMap: resolvedMap,
+        participants: {
+          deleteMany: {},
+          create: canonicalNames.map((rawName) => ({
+            rawName,
+            nickname: nicknames[rawName]?.trim() || rawName,
+            isOwner: rawName === ownerCanonical,
+          })),
+        },
+      },
+    });
   }
 
   async start(adminToken: string, clientId = "unknown"): Promise<{ ok: true }> {
     this.rateLimit.assert("analysis-start", clientId, 12, 60 * 60 * 1000);
-    const a = await this.prisma.analysis.findUnique({ where: { adminToken } });
+    const a = await this.prisma.analysis.findUnique({
+      where: { adminToken },
+      include: { participants: true },
+    });
     if (!a) throw new Error("NOT_FOUND");
+    if (a.participants.length !== 2) throw new Error("PARTICIPANTS_NOT_IDENTIFIED");
 
     if (a.status === "DONE") return { ok: true };
     const now = new Date();

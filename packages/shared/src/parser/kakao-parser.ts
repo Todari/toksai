@@ -1,4 +1,5 @@
 import { Message, ParsedChat, ParseError } from "../types";
+import { GAP_HOURS, MAX_AUTHOR_ALIASES } from "../constants";
 
 // 기기 설정에 따라 12시간제(오전/오후)와 24시간제 모두 내보내진다.
 const IOS_MSG_RE =
@@ -30,11 +31,15 @@ function toDate(
 }
 
 export interface KakaoParser {
-  parse(raw: string): ParsedChat;
+  parse(raw: string, options?: ParseKakaoOptions): ParsedChat;
+}
+
+export interface ParseKakaoOptions {
+  allowNameChanges?: boolean;
 }
 
 export class IosKakaoParser implements KakaoParser {
-  parse(raw: string): ParsedChat {
+  parse(raw: string, options?: ParseKakaoOptions): ParsedChat {
     const lines = raw.split(/\r?\n/);
     const messages: Message[] = [];
     for (let line of lines) {
@@ -52,13 +57,13 @@ export class IosKakaoParser implements KakaoParser {
       messages[messages.length - 1].text += "\n" + line;
     }
 
-    return finalize(messages);
+    return finalize(messages, options);
   }
 }
 
 /** Android 및 PC TXT의 날짜 구분선 + [이름] [시간] 메시지 형식. */
 export class BracketKakaoParser implements KakaoParser {
-  parse(raw: string): ParsedChat {
+  parse(raw: string, options?: ParseKakaoOptions): ParsedChat {
     const messages: Message[] = [];
     let currentDate: { y: string; mo: string; d: string } | null = null;
 
@@ -86,13 +91,13 @@ export class BracketKakaoParser implements KakaoParser {
       if (/님이 (들어왔습니다|나갔습니다|초대했습니다)/.test(trimmed)) continue;
       if (messages.length > 0) messages[messages.length - 1].text += `\n${line}`;
     }
-    return finalize(messages);
+    return finalize(messages, options);
   }
 }
 
 /** PC/Mac에서 내보낼 수 있는 Date,User,Message CSV 형식. */
 export class CsvKakaoParser implements KakaoParser {
-  parse(raw: string): ParsedChat {
+  parse(raw: string, options?: ParseKakaoOptions): ParsedChat {
     const rows = parseCsvRows(raw.replace(/^\ufeff/, ""));
     if (rows.length === 0 || !CSV_HEADER_RE.test(rows[0].join(","))) {
       throw new ParseError("NO_MESSAGES", "대화 메시지를 찾지 못했습니다.");
@@ -113,7 +118,7 @@ export class CsvKakaoParser implements KakaoParser {
         text: row[messageIndex] ?? "",
       });
     }
-    return finalize(messages);
+    return finalize(messages, options);
   }
 }
 
@@ -150,7 +155,82 @@ function parseCsvRows(raw: string): string[][] {
   return rows;
 }
 
-function finalize(messages: Message[]): ParsedChat {
+function suggestAuthorMap(messages: Message[], order: string[]): Record<string, string> {
+  if (order.length === 2) {
+    return Object.fromEntries(order.map((name) => [name, name]));
+  }
+
+  const index = new Map(order.map((name, i) => [name, i]));
+  const transitionWeights = Array.from(
+    { length: order.length },
+    () => Array<number>(order.length).fill(0),
+  );
+  const maxGapMs = GAP_HOURS * 60 * 60 * 1000;
+
+  for (let i = 1; i < messages.length; i++) {
+    const previous = messages[i - 1];
+    const current = messages[i];
+    if (previous.author === current.author) continue;
+    const gap = current.at.getTime() - previous.at.getTime();
+    if (gap < 0 || gap > maxGapMs) continue;
+    const a = index.get(previous.author);
+    const b = index.get(current.author);
+    if (a === undefined || b === undefined) continue;
+    transitionWeights[a][b] += 1;
+    transitionWeights[b][a] += 1;
+  }
+
+  // 첫 이름을 0번 그룹에 고정하고 가능한 2분할을 모두 비교한다.
+  // 실제 두 사람 사이에서 오간 짧은 답장 전환이 최대한 그룹 사이에 놓이는 분할을 고른다.
+  let bestMask = 1;
+  let bestScore = -1;
+  const partitionCount = 1 << (order.length - 1);
+  for (let mask = 1; mask < partitionCount; mask++) {
+    let score = 0;
+    for (let a = 0; a < order.length; a++) {
+      const groupA = a === 0 ? 0 : (mask >> (a - 1)) & 1;
+      for (let b = a + 1; b < order.length; b++) {
+        const groupB = b === 0 ? 0 : (mask >> (b - 1)) & 1;
+        if (groupA !== groupB) score += transitionWeights[a][b];
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestMask = mask;
+    }
+  }
+
+  const groups = [[], []] as string[][];
+  for (let i = 0; i < order.length; i++) {
+    const group = i === 0 ? 0 : ((bestMask >> (i - 1)) & 1);
+    groups[group].push(order[i]);
+  }
+
+  const activity = new Map<string, { lastAt: number; count: number; order: number }>();
+  for (const message of messages) {
+    const current = activity.get(message.author);
+    activity.set(message.author, {
+      lastAt: Math.max(current?.lastAt ?? -Infinity, message.at.getTime()),
+      count: (current?.count ?? 0) + 1,
+      order: index.get(message.author) ?? 0,
+    });
+  }
+  const representative = (names: string[]) =>
+    [...names].sort((a, b) => {
+      const aa = activity.get(a)!;
+      const bb = activity.get(b)!;
+      return bb.lastAt - aa.lastAt || bb.count - aa.count || aa.order - bb.order;
+    })[0];
+
+  const result: Record<string, string> = {};
+  for (const group of groups) {
+    const canonical = representative(group);
+    for (const alias of group) result[alias] = canonical;
+  }
+  return result;
+}
+
+function finalize(messages: Message[], options?: ParseKakaoOptions): ParsedChat {
   if (messages.length === 0) {
     throw new ParseError("NO_MESSAGES", "대화 메시지를 찾지 못했습니다.");
   }
@@ -160,7 +240,12 @@ function finalize(messages: Message[]): ParsedChat {
     if (!counts.has(msg.author)) order.push(msg.author);
     counts.set(msg.author, (counts.get(msg.author) ?? 0) + 1);
   }
-  if (order.length !== 2) {
+  const allowNameChanges = options?.allowNameChanges === true;
+  if (
+    order.length < 2 ||
+    (!allowNameChanges && order.length !== 2) ||
+    order.length > MAX_AUTHOR_ALIASES
+  ) {
     throw new ParseError(
       "NOT_ONE_TO_ONE",
       `1:1 대화만 지원합니다 (감지된 화자 ${order.length}명).`,
@@ -172,18 +257,19 @@ function finalize(messages: Message[]): ParsedChat {
       rawName,
       messageCount: counts.get(rawName)!,
     })),
+    suggestedAuthorMap: suggestAuthorMap(messages, order),
     startedAt: messages[0].at,
     endedAt: messages[messages.length - 1].at,
   };
 }
 
-export function parseKakao(raw: string): ParsedChat {
+export function parseKakao(raw: string, options?: ParseKakaoOptions): ParsedChat {
   const firstNonEmpty = raw.replace(/^\ufeff/, "").split(/\r?\n/).find((line) => line.trim());
   if (firstNonEmpty && CSV_HEADER_RE.test(firstNonEmpty.trim())) {
-    return new CsvKakaoParser().parse(raw);
+    return new CsvKakaoParser().parse(raw, options);
   }
   if (raw.split(/\r?\n/).some((line) => BRACKET_MSG_RE.test(line.trim()))) {
-    return new BracketKakaoParser().parse(raw);
+    return new BracketKakaoParser().parse(raw, options);
   }
-  return new IosKakaoParser().parse(raw);
+  return new IosKakaoParser().parse(raw, options);
 }

@@ -92,6 +92,35 @@ describe("parseKakao (iOS)", () => {
     try { parseKakao(raw); } catch (e) { expect((e as ParseError).code).toBe("NOT_ONE_TO_ONE"); }
   });
 
+  it("1:1 이름 변경 모드에서는 교대 패턴으로 예전·현재 이름을 같은 사람으로 제안한다", () => {
+    const raw = `2025. 1. 1. 오후 1:00, A : 안녕
+2025. 1. 1. 오후 1:01, 나 : 하이
+2025. 1. 1. 오후 1:02, A : 뭐해
+2025. 1. 1. 오후 1:03, 나 : 일해
+2025. 2. 1. 오후 1:00, B : 오랜만
+2025. 2. 1. 오후 1:01, 나 : 반가워
+2025. 2. 1. 오후 1:02, B : 잘 지냈어?
+2025. 2. 1. 오후 1:03, 나 : 응`;
+
+    const result = parseKakao(raw, { allowNameChanges: true });
+
+    expect(result.participants.map((participant) => participant.rawName)).toEqual(["A", "나", "B"]);
+    expect(result.suggestedAuthorMap).toEqual({ A: "B", B: "B", 나: "나" });
+  });
+
+  it("이름 변경 모드도 실제 인물 그룹을 두 개로 만들 수 없는 한 명 대화는 거절한다", () => {
+    const raw = `2025. 1. 1. 오후 1:00, A : 혼잣말`;
+    expect(() => parseKakao(raw, { allowNameChanges: true })).toThrowError(ParseError);
+  });
+
+  it("감지된 이름이 안전 상한을 넘으면 단체방으로 보고 거절한다", () => {
+    const raw = Array.from(
+      { length: 9 },
+      (_, index) => `2025. 1. 1. 오후 1:0${index}, 이름${index + 1} : 메시지`,
+    ).join("\n");
+    expect(() => parseKakao(raw, { allowNameChanges: true })).toThrowError(ParseError);
+  });
+
   it("메시지가 없으면 NO_MESSAGES", () => {
     try { parseKakao("Talk_x.txt\n저장한 날짜 : 2026. 1. 1. 오전 1:00\n\n"); }
     catch (e) { expect((e as ParseError).code).toBe("NO_MESSAGES"); }

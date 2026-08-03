@@ -13,6 +13,7 @@ export interface AnalysisView {
   status: string;
   createdAt: Date;
   participants: ParticipantView[];
+  authorAliasMap: Record<string, string>;
 }
 
 export interface AnalysisContract {
@@ -21,6 +22,7 @@ export interface AnalysisContract {
     adminToken: string,
     ownerRawName: string,
     nicknames: Record<string, string>,
+    authorAliasMap?: Record<string, string>,
   ): Promise<void>;
   start(adminToken: string, clientId?: string): Promise<{ ok: true }>;
   getResult(viewToken: string): Promise<AnalysisResultView | null>;
