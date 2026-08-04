@@ -1,0 +1,64 @@
+name: Recover EC2 SSH access
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recover-ec2-ssh-access
+  cancel-in-progress: false
+
+jobs:
+  rotate-key:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Derive the currently authorized public key
+        env:
+          OLD_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          set -eu
+          umask 077
+          key_file="$(mktemp)"
+          trap 'rm -f "$key_file"' EXIT
+          printf '%s\n' "$OLD_PRIVATE_KEY" > "$key_file"
+          old_public_key="$(ssh-keygen -y -f "$key_file")"
+          echo "::add-mask::$old_public_key"
+          printf 'OLD_PUBLIC_KEY=%s\n' "$old_public_key" >> "$GITHUB_ENV"
+
+      - name: Replace the EC2 authorized key
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        env:
+          NEW_PUBLIC_KEY: ${{ secrets.EC2_RECOVERY_PUBLIC_KEY }}
+          OLD_PUBLIC_KEY: ${{ env.OLD_PUBLIC_KEY }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: NEW_PUBLIC_KEY,OLD_PUBLIC_KEY
+          script: |
+            set -eu
+            umask 077
+
+            old_key_blob="$(printf '%s\n' "$OLD_PUBLIC_KEY" | awk '{print $2}')"
+            new_key_blob="$(printf '%s\n' "$NEW_PUBLIC_KEY" | awk '{print $2}')"
+            test -n "$old_key_blob"
+            test -n "$new_key_blob"
+
+            install -d -m 700 "$HOME/.ssh"
+            authorized_keys="$HOME/.ssh/authorized_keys"
+            touch "$authorized_keys"
+            chmod 600 "$authorized_keys"
+
+            next_keys="$(mktemp "$HOME/.ssh/authorized_keys.XXXXXX")"
+            trap 'rm -f "$next_keys"' EXIT
+            awk -v old="$old_key_blob" -v new="$new_key_blob" \
+              'index($0, old) == 0 && index($0, new) == 0 { print }' \
+              "$authorized_keys" > "$next_keys"
+            printf '%s\n' "$NEW_PUBLIC_KEY" >> "$next_keys"
+            chmod 600 "$next_keys"
+            mv "$next_keys" "$authorized_keys"
+            trap - EXIT
+
+            ssh-keygen -lf "$authorized_keys" >/dev/null
