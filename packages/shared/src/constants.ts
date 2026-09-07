@@ -1,4 +1,4 @@
-export const GEMINI_MODEL = "gemini-3.1-flash-lite";
+export const GEMINI_MODEL = "gemini-3.5-flash-lite";
 export const GAP_HOURS = 6;
 
 /** 한 분석이 과도한 메모리·AI 비용을 만들지 않도록 두는 제품 상한. */
