@@ -188,7 +188,7 @@ export class AnalysisService implements AnalysisContract {
 
     if (a.attemptCount >= MAX_ANALYSIS_ATTEMPTS && a.status !== "IDENTIFYING") {
       await this.prisma.analysis.updateMany({
-        where: { id: a.id, status: "ANALYZING" },
+        where: { id: a.id, status: "ANALYZING", attemptCount: a.attemptCount, heartbeatAt: a.heartbeatAt },
         data: { status: "FAILED", heartbeatAt: null },
       });
       throw new Error("ANALYSIS_RETRY_LIMIT");
@@ -197,6 +197,7 @@ export class AnalysisService implements AnalysisContract {
     const claimed = await this.prisma.analysis.updateMany({
       where: {
         id: a.id,
+        attemptCount: a.attemptCount,
         OR: [
           { status: { in: ["IDENTIFYING", "FAILED"] } },
           {
@@ -215,7 +216,7 @@ export class AnalysisService implements AnalysisContract {
 
     // 이미 다른 요청이 실행 중이면 성공으로 응답해 클라이언트 재시도를 안전하게 만든다.
     if (claimed.count === 0) return { ok: true };
-    void this.runner.run(a.id).catch(() => {});
+    void this.runner.run(a.id, a.attemptCount + 1).catch(() => {});
     return { ok: true };
   }
 
