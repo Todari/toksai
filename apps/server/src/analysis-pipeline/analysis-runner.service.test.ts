@@ -20,7 +20,7 @@ function makePrisma(encryptedText: string) {
     },
     result: null as any,
   };
-  return {
+  const prisma = {
     _store: store,
     analysis: {
       update: vi.fn(async ({ data }: any) => {
@@ -30,6 +30,7 @@ function makePrisma(encryptedText: string) {
       updateMany: vi.fn(async ({ where, data }: any) => {
         if (where.id && where.id !== store.analysis.id) return { count: 0 };
         if (where.status && where.status !== store.analysis.status) return { count: 0 };
+        if (typeof where.attemptCount === "number" && where.attemptCount !== store.analysis.attemptCount) return { count: 0 };
         Object.assign(store.analysis, data);
         return { count: 1 };
       }),
@@ -40,6 +41,8 @@ function makePrisma(encryptedText: string) {
       upsert: vi.fn(async ({ create }: any) => { store.result = create; return create; }),
     },
   } as any;
+  prisma.$transaction = vi.fn(async (fn: any) => fn(prisma));
+  return prisma;
 }
 
 const bucketReturn = (month: string) => () => ({
@@ -78,7 +81,7 @@ describe("AnalysisRunnerService.run", () => {
     const fake = new FakeLlmClient([bucketReturn("2025-01"), bucketReturn("2025-02"), synthesisReturn]);
     const runner = new AnalysisRunnerService(prisma, crypto, fake);
 
-    await runner.run("a1");
+    await runner.run("a1", 1);
 
     expect(prisma.analysis.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ status: "ANALYZING" }) }),
@@ -115,7 +118,7 @@ describe("AnalysisRunnerService.run", () => {
     });
     const fake = new FakeLlmClient([nickBucket("2025-01"), nickBucket("2025-02"), nickSynthesis]);
     const runner = new AnalysisRunnerService(prisma, crypto, fake);
-    await runner.run("a1");
+    await runner.run("a1", 1);
     const saved = prisma.analysisResult.upsert.mock.calls[0][0].create;
     expect(saved.affinitySeries[0].scores["김승현"]).toBe(55); // "승현" → rawName
     expect(saved.affinitySeries[0].scores["곽민성"]).toBe(44);
@@ -162,7 +165,7 @@ describe("AnalysisRunnerService.run", () => {
       new FakeLlmClient([aliasBucket, aliasSynthesis]),
     );
 
-    await runner.run("a1");
+    await runner.run("a1", 1);
 
     const saved = prisma.analysisResult.upsert.mock.calls[0][0].create;
     expect(Object.keys(saved.stats.perPerson).sort()).toEqual(["B", "나"].sort());
@@ -194,7 +197,7 @@ describe("AnalysisRunnerService.run", () => {
     ]);
     const runner = new AnalysisRunnerService(prisma, crypto, fake);
 
-    await runner.run("a1");
+    await runner.run("a1", 1);
 
     const saved = prisma.analysisResult.upsert.mock.calls[0][0].create;
     expect(saved.stats.totalMessages).toBe(4);
@@ -224,7 +227,7 @@ describe("AnalysisRunnerService.run", () => {
     const fake = new FakeLlmClient([honestBucket("2025-01"), honestBucket("2025-02"), honestSynthesis]);
     const runner = new AnalysisRunnerService(prisma, crypto, fake);
 
-    await runner.run("a1");
+    await runner.run("a1", 1);
 
     const saved = prisma.analysisResult.upsert.mock.calls[0][0].create;
     expect(saved.highlights.map((h: { kind: string }) => h.kind)).toEqual(["awkward", "clash"]);
@@ -237,7 +240,7 @@ describe("AnalysisRunnerService.run", () => {
     const prisma = makePrisma(crypto.encrypt(RAW));
     const throwing = { generateJson: vi.fn(async () => { throw new Error("boom"); }) } as any;
     const runner = new AnalysisRunnerService(prisma, crypto, throwing);
-    await expect(runner.run("a1")).rejects.toThrow();
+    await expect(runner.run("a1", 1)).rejects.toThrow();
     expect(prisma._store.analysis.status).toBe("FAILED");
   });
 
@@ -255,7 +258,7 @@ describe("AnalysisRunnerService.run", () => {
     ]);
     const runner = new AnalysisRunnerService(prisma, crypto, fake);
 
-    await runner.run("a1");
+    await runner.run("a1", 1);
 
     const saved = prisma.analysisResult.upsert.mock.calls[0][0].create;
     expect(saved.timeline[0].quote).toBeUndefined();
@@ -265,10 +268,49 @@ describe("AnalysisRunnerService.run", () => {
 });
 
 describe("AnalysisRunnerService stale recovery", () => {
+  it("기동 후에도 주기적으로 재시도하고 종료 시 타이머를 해제한다", async () => {
+    vi.useFakeTimers();
+    const crypto = new CryptoService(randomBytes(32).toString("base64"));
+    const prisma = makePrisma(crypto.encrypt(RAW));
+    const runner = new AnalysisRunnerService(prisma, crypto, new FakeLlmClient([]));
+    try {
+      await runner.onModuleInit();
+      expect(prisma.analysis.findMany).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(prisma.analysis.findMany).toHaveBeenCalledTimes(2);
+      runner.onModuleDestroy();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(prisma.analysis.findMany).toHaveBeenCalledTimes(2);
+    } finally { runner.onModuleDestroy(); vi.useRealTimers(); }
+  });
+
+  it("이전 attempt의 늦은 시작은 새 attempt를 FAILED로 바꾸지 않는다", async () => {
+    const crypto = new CryptoService(randomBytes(32).toString("base64"));
+    const prisma = makePrisma(crypto.encrypt(RAW));
+    prisma._store.analysis.attemptCount = 2;
+    const runner = new AnalysisRunnerService(prisma, crypto, new FakeLlmClient([]));
+    await expect(runner.run("a1", 1)).rejects.toThrow("ANALYSIS_JOB_NOT_ACTIVE");
+    expect(prisma._store.analysis.status).toBe("ANALYZING");
+    expect(prisma.analysisResult.upsert).not.toHaveBeenCalled();
+  });
+
+  it("합성 도중 소유권을 잃은 실행은 새 결과를 덮어쓰지 않는다", async () => {
+    const crypto = new CryptoService(randomBytes(32).toString("base64"));
+    const prisma = makePrisma(crypto.encrypt(RAW));
+    const fake = new FakeLlmClient([bucketReturn("2025-01"), bucketReturn("2025-02"), () => {
+      prisma._store.analysis.attemptCount = 2;
+      return synthesisReturn();
+    }]);
+    const runner = new AnalysisRunnerService(prisma, crypto, fake);
+    await expect(runner.run("a1", 1)).rejects.toThrow("ANALYSIS_JOB_NOT_ACTIVE");
+    expect(prisma._store.analysis.status).toBe("ANALYZING");
+    expect(prisma.analysisResult.upsert).not.toHaveBeenCalled();
+  });
+
   it("서버 시작 시 오래 멈춘 ANALYZING 작업을 다시 실행한다", async () => {
     const crypto = new CryptoService(randomBytes(32).toString("base64"));
     const prisma = makePrisma(crypto.encrypt(RAW));
-    prisma.analysis.findMany.mockResolvedValue([{ id: "a1", heartbeatAt: null }]);
+    prisma.analysis.findMany.mockResolvedValue([{ id: "a1", heartbeatAt: null, attemptCount: 1 }]);
     prisma.analysis.updateMany.mockResolvedValue({ count: 1 });
     const runner = new AnalysisRunnerService(prisma, crypto, new FakeLlmClient([]));
     const run = vi.spyOn(runner, "run").mockResolvedValue();
@@ -276,6 +318,7 @@ describe("AnalysisRunnerService stale recovery", () => {
     await runner.onModuleInit();
     await Promise.resolve();
 
-    expect(run).toHaveBeenCalledWith("a1");
+    expect(run).toHaveBeenCalledWith("a1", 2);
+    runner.onModuleDestroy();
   });
 });

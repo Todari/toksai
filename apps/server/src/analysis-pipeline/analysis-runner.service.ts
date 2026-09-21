@@ -1,4 +1,4 @@
-import { Injectable, Logger, type OnModuleInit } from "@nestjs/common";
+import { Injectable, Logger, type OnModuleInit, type OnModuleDestroy } from "@nestjs/common";
 import type { PrismaClient } from "@toksai/db";
 import type { AuthorAliasMap } from "@toksai/api";
 import {
@@ -17,8 +17,10 @@ const MAX_ANALYSIS_ATTEMPTS = 3;
 const MIN_BUCKET_COVERAGE = 0.6;
 
 @Injectable()
-export class AnalysisRunnerService implements OnModuleInit {
+export class AnalysisRunnerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AnalysisRunnerService.name);
+  private recoveryTimer?: ReturnType<typeof setInterval>;
+  private recovering = false;
 
   constructor(
     private readonly prisma: PrismaClient,
@@ -27,17 +29,31 @@ export class AnalysisRunnerService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    this.recoveryTimer = setInterval(() => { void this.recoverSafely(); }, 60_000);
+    this.recoveryTimer.unref();
+    await this.recoverSafely();
+  }
+
+  onModuleDestroy(): void {
+    if (this.recoveryTimer) clearInterval(this.recoveryTimer);
+  }
+
+  private async recoverSafely(): Promise<void> {
+    if (this.recovering) return;
+    this.recovering = true;
     try {
       await this.recoverStaleJobs();
     } catch (e) {
       // 복구 점검 실패가 서버 자체의 기동을 막지는 않게 한다.
       this.logger.error(`stale job recovery failed: ${String(e)}`);
+    } finally {
+      this.recovering = false;
     }
   }
 
-  async run(analysisId: string): Promise<void> {
+  async run(analysisId: string, attemptCount: number): Promise<void> {
     try {
-      await this.heartbeat(analysisId);
+      await this.heartbeat(analysisId, attemptCount);
       const analysis = await this.prisma.analysis.findUnique({
         where: { id: analysisId },
         include: { participants: true, rawChat: true },
@@ -97,7 +113,7 @@ export class AnalysisRunnerService implements OnModuleInit {
 
       const bucketResults = (await mapWithConcurrency(buckets, BUCKET_CONCURRENCY, async (b) => {
         try {
-          await this.heartbeat(analysisId);
+          await this.heartbeat(analysisId, attemptCount);
           const source = renderBucketText(b);
           const generated = await this.llm.generateJson<BucketAnalysis>(
             {
@@ -109,7 +125,7 @@ export class AnalysisRunnerService implements OnModuleInit {
           );
           const grounded = this.groundBucketQuotes(generated, b.messages);
           ungroundedQuotesRemoved += grounded.removed;
-          await this.heartbeat(analysisId);
+          await this.heartbeat(analysisId, attemptCount);
           return { ...grounded.value, month: b.month };
         } catch (e) {
           this.logger.warn(`bucket ${b.month} failed: ${String(e)}`);
@@ -125,7 +141,7 @@ export class AnalysisRunnerService implements OnModuleInit {
       }
 
       const statsSummary = this.summarizeStats(stats, people);
-      await this.heartbeat(analysisId);
+      await this.heartbeat(analysisId, attemptCount);
       const synthesis = await this.llm.generateJson<Omit<AnalysisResultView, "stats" | "affinitySeries">>(
         {
           systemInstruction: SYSTEM_INSTRUCTION,
@@ -186,20 +202,23 @@ export class AnalysisRunnerService implements OnModuleInit {
         },
       };
 
-      await this.prisma.analysisResult.upsert({
-        where: { analysisId },
-        create: { analysisId, ...this.toJsonColumns(result) },
-        update: this.toJsonColumns(result),
-      });
-      await this.prisma.analysis.update({
-        where: { id: analysisId },
-        data: { status: "DONE", heartbeatAt: null },
+      await this.prisma.$transaction(async (tx) => {
+        const owned = await tx.analysis.updateMany({
+          where: { id: analysisId, status: "ANALYZING", attemptCount },
+          data: { status: "DONE", heartbeatAt: null },
+        });
+        if (owned.count !== 1) throw new Error("ANALYSIS_JOB_NOT_ACTIVE");
+        await tx.analysisResult.upsert({
+          where: { analysisId },
+          create: { analysisId, ...this.toJsonColumns(result) },
+          update: this.toJsonColumns(result),
+        });
       });
     } catch (e) {
       // FAILED 전이가 다시 실패해도 원본 에러를 가리지 않는다.
       try {
-        await this.prisma.analysis.update({
-          where: { id: analysisId },
+        await this.prisma.analysis.updateMany({
+          where: { id: analysisId, status: "ANALYZING", attemptCount },
           data: { status: "FAILED", heartbeatAt: null },
         });
       } catch (e2) {
@@ -210,9 +229,9 @@ export class AnalysisRunnerService implements OnModuleInit {
     }
   }
 
-  private async heartbeat(analysisId: string): Promise<void> {
+  private async heartbeat(analysisId: string, attemptCount: number): Promise<void> {
     const touched = await this.prisma.analysis.updateMany({
-      where: { id: analysisId, status: "ANALYZING" },
+      where: { id: analysisId, status: "ANALYZING", attemptCount },
       data: { heartbeatAt: new Date() },
     });
     if (touched.count !== 1) throw new Error("ANALYSIS_JOB_NOT_ACTIVE");
@@ -234,7 +253,7 @@ export class AnalysisRunnerService implements OnModuleInit {
         attemptCount: { lt: MAX_ANALYSIS_ATTEMPTS },
         OR: [{ heartbeatAt: null }, { heartbeatAt: { lt: staleBefore } }],
       },
-      select: { id: true, heartbeatAt: true },
+      select: { id: true, heartbeatAt: true, attemptCount: true },
     });
 
     for (const job of jobs) {
@@ -244,6 +263,7 @@ export class AnalysisRunnerService implements OnModuleInit {
           id: job.id,
           status: "ANALYZING",
           heartbeatAt: job.heartbeatAt,
+          attemptCount: job.attemptCount,
         },
         data: {
           jobStartedAt: now,
@@ -251,7 +271,7 @@ export class AnalysisRunnerService implements OnModuleInit {
           attemptCount: { increment: 1 },
         },
       });
-      if (claimed.count === 1) void this.run(job.id).catch(() => {});
+      if (claimed.count === 1) void this.run(job.id, job.attemptCount + 1).catch(() => {});
     }
   }
 
